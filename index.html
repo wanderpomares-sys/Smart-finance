@@ -380,6 +380,12 @@ const SFSec = (() => {
       try { await save(pendingState); } catch (e) { console.error('falha ao gravar cofre', e); }
     }, 120);
   }
+  /** Grava agora, sem esperar o debounce. Usado ao sair/minimizar o app. */
+  async function flushSave() {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    if (!pendingState) return;
+    try { await save(pendingState); } catch (e) { console.error('falha ao gravar cofre', e); }
+  }
 
   function lock() { masterRaw = null; masterKey = null; pendingState = null; }
   const isUnlocked = () => !!masterKey;
@@ -504,7 +510,7 @@ const SFSec = (() => {
   function dropLegacy() { localStorage.removeItem(LEGACY_KEY); }
 
   return {
-    hasVault, createVault, unlock, unlockBiometric, lock, isUnlocked, scheduleSave, save,
+    hasVault, createVault, unlock, unlockBiometric, lock, isUnlocked, scheduleSave, save, flushSave,
     methods, settings, setAutoLock, setPin, removePin, changePassword, verifyPassword,
     regenerateRecovery, enableBiometric, disableBiometric, bioAvailable,
     exportEncrypted, importEncrypted, legacyState, dropLegacy, logEvent, deviceLabel,
@@ -2848,10 +2854,9 @@ function viewInvestir() {
         <tr><td>Ganho real (acima do IPCA)</td><td class="rt ${perf.beatsInflation ? 'pos' : 'neg'}">${pct(perf.realAnnualPct)} a.a.</td></tr>
       </tbody></table>
       <div class="btns">
-        ${inv.accountId ? `
         <button class="ghost sm" onclick="openInvQuick('${inv.id}','APORTE')">+ Aporte</button>
         <button class="ghost sm" onclick="openInvQuick('${inv.id}','RESGATE')">− Resgate</button>
-        <button class="ghost sm" onclick="openInvQuick('${inv.id}','RENDIMENTO')">% Rendimento</button>` : ''}
+        <button class="ghost sm" onclick="openInvQuick('${inv.id}','RENDIMENTO')">% Rendimento</button>
         <button class="primary sm" onclick="invCompareId='${inv.id}';render()">Comparar com o mercado</button>
         <button class="ghost sm" onclick="removeInvestment('${inv.id}')">Remover</button>
       </div>
@@ -3176,7 +3181,7 @@ function invQuickFormHtml(inv) {
 }
 function saveInvQuick() {
   const inv = S.investments.find((i) => i.id === invQuickForm.invId);
-  if (!inv || !inv.accountId) return;
+  if (!inv) return;
   const date = SFCore.brDateToISO($('#iq-date').value.trim());
   let amount = SFCore.parseMoney($('#iq-amount').value || '');
   if (!date) { alert('Data inválida — use dd/mm/aaaa.'); return; }
@@ -3184,8 +3189,22 @@ function saveInvQuick() {
   amount = Math.abs(amount);
   const kind = invQuickForm.kind;
   const signedAmount = kind === 'RESGATE' ? -amount : amount;
-  const description = `${INV_QUICK_DESC_WORD[kind]} ${inv.institution}`;
-  addManualTx(S, inv.accountId, { date, amount: signedAmount, description, categoryId: null });
+
+  if (inv.accountId) {
+    // Investimento vinculado a uma conta: lança no extrato e o saldo se recalcula sozinho
+    const description = `${INV_QUICK_DESC_WORD[kind]} ${inv.institution}`;
+    addManualTx(S, inv.accountId, { date, amount: signedAmount, description, categoryId: null });
+  } else {
+    // Investimento avulso: ajusta os valores do próprio investimento
+    if (kind === 'RESGATE' && amount > (inv.currentBalance || 0)) {
+      alert('O resgate é maior que o saldo atual do investimento.');
+      return;
+    }
+    inv.currentBalance = (inv.currentBalance || 0) + signedAmount;
+    // Aporte e resgate mexem no capital aplicado; rendimento não (é ganho, não dinheiro novo)
+    if (kind === 'APORTE') inv.appliedAmount = (inv.appliedAmount || 0) + amount;
+    if (kind === 'RESGATE') inv.appliedAmount = Math.max(0, (inv.appliedAmount || 0) - amount);
+  }
   persist();
   closeInvQuick();
 }
@@ -3399,10 +3418,19 @@ function render() {
   syncEyeIcon();
 }
 
+/** Garante que qualquer alteração pendente seja gravada antes de o app sair de cena. */
+function flushPendingSave() {
+  try { SFSec.flushSave(); } catch (e) { /* cofre já bloqueado ou sem alterações */ }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   ['click', 'keydown', 'touchstart', 'scroll'].forEach((ev) =>
     document.addEventListener(ev, touchActivity, { passive: true }));
-  document.addEventListener('visibilitychange', () => { if (document.hidden) checkAutoLock(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { flushPendingSave(); checkAutoLock(); }
+  });
+  window.addEventListener('pagehide', flushPendingSave);
+  window.addEventListener('beforeunload', flushPendingSave);
   bootScreen();
 });
 </script>
