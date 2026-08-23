@@ -3404,26 +3404,6 @@ window.addEventListener('DOMContentLoaded', () => {
     document.addEventListener(ev, touchActivity, { passive: true }));
   document.addEventListener('visibilitychange', () => { if (document.hidden) checkAutoLock(); });
   bootScreen();
-  
-  // Registrar Service Worker para PWA
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('data:application/javascript,' + encodeURIComponent(`
-      self.addEventListener('install', () => { self.skipWaiting(); });
-
-      self.addEventListener('activate', (e) => {
-        e.waitUntil(Promise.all([
-          self.clients.claim(),
-          caches.keys().then((names) => Promise.all(names.map((name) => {
-            if (name !== 'smart-finance-v1') return caches.delete(name);
-          }))),
-        ]));
-      });
-
-      self.addEventListener('fetch', (e) => {
-        e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
-      });
-    `), { scope: './' }).catch(() => {});
-  }
 });
 </script>
 </body>
