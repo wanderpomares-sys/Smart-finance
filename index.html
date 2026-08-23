@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Smart Finance">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="data:application/json,{%22name%22:%22Smart Finance Family%22,%22short_name%22:%22Smart Finance%22,%22description%22:%22Gestão financeira familiar%22,%22start_url%22:%22/%22,%22display%22:%22standalone%22,%22background_color%22:%22%23F4F6F8%22,%22theme_color%22:%22%2314263D%22,%22icons%22:[{%22src%22:%22data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 192 192%27><rect fill=%27%2314263D%27 width=%27192%27 height=%27192%27/><text x=%2748%27 y=%27140%27 font-size=%27120%27 font-weight=%27bold%27 fill=%27%23fff%27>💰</text></svg>%22,%22sizes%22:%22192x192%22,%22type%22:%22image/svg+xml%22,%22purpose%22:%22any%22},{%22src%22:%22data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 180 180%27><rect fill=%27%2314263D%27 width=%27180%27 height=%27180%27/><text x=%2745%27 y=%27135%27 font-size=%27110%27 font-weight=%27bold%27 fill=%27%23fff%27>💰</text></svg>%22,%22sizes%22:%22180x180%22,%22type%22:%22image/svg+xml%22}]}">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%2314263D' width='100' height='100'/><text x='25' y='75' font-size='60' font-weight='bold' fill='%23fff'>💰</text></svg>">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%2314263D' width='180' height='180' rx='30'/><text x='45' y='135' font-size='110' font-weight='bold' fill='%23fff'>💰</text></svg>">
 <title>Smart Finance Family</title>
@@ -2841,9 +2841,14 @@ function viewInvestir() {
         <tr><td>Ganho real (acima do IPCA)</td><td class="rt ${perf.beatsInflation ? 'pos' : 'neg'}">${pct(perf.realAnnualPct)} a.a.</td></tr>
       </tbody></table>
       <div class="btns">
+        ${inv.accountId ? `
+        <button class="ghost sm" onclick="openInvQuick('${inv.id}','APORTE')">+ Aporte</button>
+        <button class="ghost sm" onclick="openInvQuick('${inv.id}','RESGATE')">− Resgate</button>
+        <button class="ghost sm" onclick="openInvQuick('${inv.id}','RENDIMENTO')">% Rendimento</button>` : ''}
         <button class="primary sm" onclick="invCompareId='${inv.id}';render()">Comparar com o mercado</button>
         <button class="ghost sm" onclick="removeInvestment('${inv.id}')">Remover</button>
       </div>
+      ${invQuickForm.open && invQuickForm.invId === inv.id ? invQuickFormHtml(inv) : ''}
     </div>`).join('') || '<div class="empty">Nenhum investimento cadastrado. Se você já tem cofrinho ou poupança como conta, use o botão Adicionar para trazer os dados automaticamente.</div>'}
     ${rep.fgc.filter((f) => f.uncovered > 0).map((f) => `<div class="banner warn">⚠ Em ${esc(f.institution)} você tem ${fmtBRL(f.total)}; o FGC cobre até R$ 250.000 por instituição — ${fmtBRL(f.uncovered)} ficam sem garantia. Vale dividir entre bancos.</div>`).join('')}
   </div>`;
@@ -3054,6 +3059,7 @@ function askRemoveAccount(accountId) {
 let extAccount = '';
 /* ═════════ Extrato — inclusão, alteração e exclusão manual de lançamentos ═════════ */
 let manualForm = { open: false, editId: null, date: '', amount: '', description: '', categoryId: '' };
+let invQuickForm = { open: false, invId: null, kind: null, date: '', amount: '' };
 
 function txRowEditable(t) {
   const a = accountById(S, t.accountId);
@@ -3135,6 +3141,46 @@ function deleteManualTx(txId) {
     SFSec.logEvent(S, 'ACAO_CRITICA', null, `lançamento excluído manualmente`);
   });
   closeManualForm();
+}
+
+const INV_QUICK_LABELS = { APORTE: 'Aporte', RESGATE: 'Resgate', RENDIMENTO: 'Rendimento' };
+const INV_QUICK_DESC_WORD = { APORTE: 'Aplicação', RESGATE: 'Resgate', RENDIMENTO: 'Rendimento' };
+function openInvQuick(invId, kind) {
+  invQuickForm = { open: true, invId, kind, date: fmtDate(today()), amount: '' };
+  render();
+}
+function closeInvQuick() { invQuickForm = { open: false, invId: null, kind: null, date: '', amount: '' }; render(); }
+function invQuickFormHtml(inv) {
+  const label = INV_QUICK_LABELS[invQuickForm.kind];
+  const helpByKind = {
+    APORTE: 'Dinheiro que você colocou no cofrinho/investimento.',
+    RESGATE: 'Dinheiro que você retirou. Se caiu em outra conta sua, lance também uma entrada lá com a mesma data e valor, descrição "Transferência".',
+    RENDIMENTO: 'O que rendeu no período: saldo atual − saldo anterior − aportes + resgates.',
+  };
+  return `<div class="form">
+    <div class="hint">${helpByKind[invQuickForm.kind]}</div>
+    <input id="iq-date" placeholder="Data (dd/mm/aaaa)" value="${esc(invQuickForm.date)}">
+    <input id="iq-amount" placeholder="Valor (ex.: 50,00)" value="${esc(invQuickForm.amount)}">
+    <div class="btns">
+      <button class="primary sm" onclick="saveInvQuick()">Salvar ${label.toLowerCase()}</button>
+      <button class="ghost sm" onclick="closeInvQuick()">Cancelar</button>
+    </div>
+  </div>`;
+}
+function saveInvQuick() {
+  const inv = S.investments.find((i) => i.id === invQuickForm.invId);
+  if (!inv || !inv.accountId) return;
+  const date = SFCore.brDateToISO($('#iq-date').value.trim());
+  let amount = SFCore.parseMoney($('#iq-amount').value || '');
+  if (!date) { alert('Data inválida — use dd/mm/aaaa.'); return; }
+  if (Number.isNaN(amount) || amount === 0) { alert('Informe um valor diferente de zero.'); return; }
+  amount = Math.abs(amount);
+  const kind = invQuickForm.kind;
+  const signedAmount = kind === 'RESGATE' ? -amount : amount;
+  const description = `${INV_QUICK_DESC_WORD[kind]} ${inv.institution}`;
+  addManualTx(S, inv.accountId, { date, amount: signedAmount, description, categoryId: null });
+  persist();
+  closeInvQuick();
 }
 
 function viewExtrato() {
