@@ -1839,9 +1839,16 @@ async function doUnlockBio() {
   lockBusy = false; render();
 }
 
+const VALID_TABS = ['inicio', 'consolidado', 'importar', 'extrato', 'contas', 'calendario', 'consultor', 'relatorios', 'auditoria', 'investir', 'seguranca', 'mais'];
+function tabFromUrl() {
+  try {
+    const t = new URLSearchParams(window.location.search).get('tab');
+    return VALID_TABS.includes(t) ? t : null;
+  } catch { return null; }
+}
 function unlockedBoot() {
   document.body.classList.remove('locked');
-  lockMsg = ''; lockBusy = false; tab = 'inicio';
+  lockMsg = ''; lockBusy = false; tab = tabFromUrl() || 'inicio';
   setValuesHidden(true); // toda vez que o app abre ou desbloqueia, os valores começam ocultos
   syncEyeIcon();
   touchActivity();
