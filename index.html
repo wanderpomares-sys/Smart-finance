@@ -697,6 +697,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
+const APP_VERSION = '2026.08.24-c';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -2071,6 +2072,7 @@ function viewSeguranca() {
     <h3>Diagnóstico de gravação</h3>
     <div class="hint">Use esta seção se desconfiar que dados não estão sendo salvos.</div>
     <table class="audit">
+      <tr><td>Versão do app</td><td><b>${APP_VERSION}</b></td></tr>
       <tr><td>Situação</td><td><b>${SFSec.saveHealth().error ? '❌ ' + esc(SFSec.saveHealth().error) : '✅ Gravando normalmente'}</b></td></tr>
       <tr><td>Última gravação</td><td>${SFSec.saveHealth().lastSaveAt ? new Date(SFSec.saveHealth().lastSaveAt).toLocaleString('pt-BR') : 'nenhuma nesta sessão'}</td></tr>
       <tr><td>Versão dos dados</td><td>${SFSec.saveHealth().rev}</td></tr>
