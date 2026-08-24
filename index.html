@@ -234,6 +234,10 @@ const SFSec = (() => {
   let masterRaw = null;        // Uint8Array(32) — chave mestra em claro só enquanto desbloqueado
   let masterKey = null;        // CryptoKey derivada dela
   let saveTimer = null, pendingState = null;
+  // Revisão de dados que ESTA aba conhece. Impede que uma aba antiga
+  // (aberta há mais tempo, com dados desatualizados) sobrescreva o que
+  // outra aba gravou depois. Sem isso, fechar uma aba velha apaga dados novos.
+  let knownRev = 0;
 
   const readVault = () => { try { const r = localStorage.getItem(VAULT_KEY); return r ? JSON.parse(r) : null; } catch { return null; } };
   const writeVault = (v) => localStorage.setItem(VAULT_KEY, JSON.stringify(v));
@@ -278,7 +282,9 @@ const SFSec = (() => {
       },
       meta: { autoLockMinutes: 5, failedAttempts: 0, lockedUntil: null, requirePasswordForCritical: true },
       data: null,
+      rev: 0,
     };
+    knownRev = 0;
     writeVault(vault);
     await save(existingState);
     return recoveryCode;
@@ -348,6 +354,8 @@ const SFSec = (() => {
 
   async function loadDecrypted(method) {
     const v = readVault();
+    // A partir daqui esta aba conhece a revisão atual dos dados.
+    knownRev = (v && v.rev) || 0;
     let state = null;
     if (v.data) {
       const bytes = await aesDecrypt(masterKey, v.data);
@@ -368,8 +376,25 @@ const SFSec = (() => {
   async function save(state) {
     if (!masterKey || !state) return;
     const v = readVault();
-    v.data = await aesEncrypt(masterKey, enc.encode(JSON.stringify(state)));
-    writeVault(v);
+    if (!v) return;
+    const currentRev = v.rev || 0;
+    // Outra aba gravou algo mais recente do que esta aba conhece: não sobrescrever.
+    if (currentRev > knownRev) {
+      console.warn('gravação ignorada: outra aba tem dados mais recentes');
+      return;
+    }
+    const payload = await aesEncrypt(masterKey, enc.encode(JSON.stringify(state)));
+    // Reler no momento da escrita: outra aba pode ter gravado durante a criptografia.
+    const fresh = readVault();
+    if (!fresh) return;
+    if ((fresh.rev || 0) > knownRev) {
+      console.warn('gravação ignorada: outra aba gravou durante a operação');
+      return;
+    }
+    fresh.data = payload;
+    fresh.rev = knownRev + 1;
+    knownRev = fresh.rev;
+    writeVault(fresh);
   }
   /** Gravação com debounce — a UI chama sem esperar. */
   function scheduleSave(state) {
