@@ -209,7 +209,18 @@ const SFSec = (() => {
   const KDF_ITER_PIN = 1200000;      // PIN tem pouca entropia: dobra o custo de cada tentativa
   const enc = new TextEncoder(), dec = new TextDecoder();
 
-  const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+  // Converte para base64 em blocos. Usar String.fromCharCode(...array) de uma vez
+  // estoura a pilha de chamadas quando há muitos dados (centenas de lançamentos),
+  // fazendo a gravação falhar silenciosamente.
+  const b64 = (buf) => {
+    const bytes = new Uint8Array(buf);
+    const CHUNK = 8192;
+    let out = '';
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      out += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(out);
+  };
   const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
   const rand = (n) => crypto.getRandomValues(new Uint8Array(n));
 
@@ -377,6 +388,16 @@ const SFSec = (() => {
 
   async function save(state) {
     if (!masterKey || !state) return;
+    try {
+      await saveInner(state);
+    } catch (e) {
+      if (!lastSaveError) {
+        lastSaveError = 'Não foi possível gravar: ' + ((e && e.message) ? e.message : 'erro desconhecido');
+      }
+      throw e;
+    }
+  }
+  async function saveInner(state) {
     const v = readVault();
     if (!v) return;
     const currentRev = v.rev || 0;
