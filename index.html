@@ -238,6 +238,8 @@ const SFSec = (() => {
   // (aberta há mais tempo, com dados desatualizados) sobrescreva o que
   // outra aba gravou depois. Sem isso, fechar uma aba velha apaga dados novos.
   let knownRev = 0;
+  let lastSaveError = null;   // mensagem do último erro de gravação (null = tudo certo)
+  let lastSaveAt = null;      // quando gravou com sucesso pela última vez
 
   const readVault = () => { try { const r = localStorage.getItem(VAULT_KEY); return r ? JSON.parse(r) : null; } catch { return null; } };
   const writeVault = (v) => localStorage.setItem(VAULT_KEY, JSON.stringify(v));
@@ -393,8 +395,18 @@ const SFSec = (() => {
     }
     fresh.data = payload;
     fresh.rev = knownRev + 1;
-    knownRev = fresh.rev;
-    writeVault(fresh);
+    try {
+      writeVault(fresh);
+      knownRev = fresh.rev;
+      lastSaveAt = new Date().toISOString();
+      lastSaveError = null;
+    } catch (e) {
+      // Erro mais comum: armazenamento cheio ou bloqueado pelo navegador.
+      lastSaveError = (e && e.name === 'QuotaExceededError')
+        ? 'O armazenamento do navegador está cheio. Faça um backup e libere espaço.'
+        : ('Não foi possível gravar: ' + (e && e.message ? e.message : 'erro desconhecido'));
+      throw e;
+    }
   }
   /** Gravação com debounce — a UI chama sem esperar. */
   function scheduleSave(state) {
@@ -540,6 +552,7 @@ const SFSec = (() => {
     regenerateRecovery, enableBiometric, disableBiometric, bioAvailable,
     exportEncrypted, importEncrypted, legacyState, dropLegacy, logEvent, deviceLabel,
     lockoutState, registerFailure,
+    saveHealth: () => ({ error: lastSaveError, lastSaveAt, rev: knownRev }),
   };
 })();
 </script>
@@ -2034,6 +2047,21 @@ function viewSeguranca() {
   </div>
 
   <div class="card">
+    <h3>Diagnóstico de gravação</h3>
+    <div class="hint">Use esta seção se desconfiar que dados não estão sendo salvos.</div>
+    <table class="audit">
+      <tr><td>Situação</td><td><b>${SFSec.saveHealth().error ? '❌ ' + esc(SFSec.saveHealth().error) : '✅ Gravando normalmente'}</b></td></tr>
+      <tr><td>Última gravação</td><td>${SFSec.saveHealth().lastSaveAt ? new Date(SFSec.saveHealth().lastSaveAt).toLocaleString('pt-BR') : 'nenhuma nesta sessão'}</td></tr>
+      <tr><td>Versão dos dados</td><td>${SFSec.saveHealth().rev}</td></tr>
+      <tr><td>Lançamentos guardados</td><td>${S.txs.length}</td></tr>
+      <tr><td>Contas cadastradas</td><td>${S.accounts.length}</td></tr>
+      <tr><td>Espaço usado</td><td>${(() => { try { const raw = localStorage.getItem('sf-vault-v1') || ''; return (raw.length / 1024).toFixed(0) + ' KB'; } catch { return 'indisponível'; } })()}</td></tr>
+      <tr><td>Endereço</td><td style="word-break:break-all">${esc(location.href)}</td></tr>
+    </table>
+    <div class="btns"><button class="ghost sm" onclick="testarGravacao()">Testar gravação agora</button></div>
+  </div>
+
+  <div class="card">
     <h3>Perfis da família</h3>
     <div class="hint">Hoje o cofre é um só, protegido pela sua senha: quem não a tem não abre nada. Perfis separados por pessoa, com permissões diferentes para cada membro, exigem um servidor para guardar os dados compartilhados — está previsto na Fase 4 do projeto.</div>
   </div>`;
@@ -3439,11 +3467,34 @@ function render() {
   document.body.classList.remove('locked');
   const views = { inicio: viewInicio, importar: viewImportar, extrato: viewExtrato, contas: viewContas,
                   auditoria: viewAuditoria, investir: viewInvestir, seguranca: viewSeguranca, consolidado: viewConsolidado, relatorios: viewRelatorios, calendario: viewCalendario, consultor: viewConsultor, mais: viewMais };
+  const health = SFSec.saveHealth();
   $('#view').innerHTML =
     (storageOk ? '' : '<div class="error">Este navegador não permitiu salvar dados (modo de visualização?). Baixe o arquivo e abra direto no navegador do seu computador ou celular.</div>')
+    + (health.error ? `<div class="error"><b>Seus dados NÃO foram salvos.</b><br>${esc(health.error)}</div>` : '')
     + views[tab]() + viewAuthModal();
   document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   syncEyeIcon();
+}
+
+/** Faz uma gravação de verdade e confirma, na hora, se funcionou. */
+async function testarGravacao() {
+  try {
+    SFSec.scheduleSave(S);
+    await SFSec.flushSave();
+    const h = SFSec.saveHealth();
+    if (h.error) { alert('FALHOU\n\n' + h.error); }
+    else {
+      // conferir relendo do armazenamento
+      const raw = localStorage.getItem('sf-vault-v1');
+      const ok = !!raw && (JSON.parse(raw).rev || 0) === h.rev;
+      alert(ok
+        ? `Gravação OK.\n\nVersão: ${h.rev}\nLançamentos: ${S.txs.length}\nContas: ${S.accounts.length}\nTamanho: ${(raw.length/1024).toFixed(0)} KB`
+        : 'ATENÇÃO: gravou, mas ao reler o dado não confere. O navegador pode estar descartando o armazenamento.');
+    }
+  } catch (e) {
+    alert('FALHOU\n\n' + (e && e.message ? e.message : 'erro desconhecido'));
+  }
+  render();
 }
 
 /** Garante que qualquer alteração pendente seja gravada antes de o app sair de cena. */
