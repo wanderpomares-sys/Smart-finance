@@ -3151,6 +3151,7 @@ let extAccount = '';
 /* ═════════ Extrato — inclusão, alteração e exclusão manual de lançamentos ═════════ */
 let manualForm = { open: false, editId: null, date: '', amount: '', description: '', categoryId: '' };
 let invQuickForm = { open: false, invId: null, kind: null, date: '', amount: '' };
+let categoryForm = { open: false, editId: null, name: '', kind: 'DESPESA' };
 
 function txRowEditable(t) {
   const a = accountById(S, t.accountId);
@@ -3211,17 +3212,29 @@ function saveManualTx() {
   const data = readManualForm();
   if (!data) return;
   if (manualForm.editId) {
-    const t = S.txs.find((x) => x.id === manualForm.editId);
-    const label = t ? t.descriptionRaw : '';
+    const editId = manualForm.editId; // capturado antes de fechar o formulário — closeManualForm() zera manualForm.editId
+    const t = S.txs.find((x) => x.id === editId);
+    if (!t) { closeManualForm(); return; }
+    // só a categoria mudou: não precisa reautenticar a cada alteração
+    const onlyCategoryChanged = data.date === t.date && data.amount === t.amount && data.description === t.descriptionRaw;
+    if (onlyCategoryChanged) {
+      updateTx(S, editId, data);
+      SFSec.logEvent(S, 'ACAO_CRITICA', null, `categoria do lançamento alterada`);
+      persistNow();
+      closeManualForm();
+      return;
+    }
+    const label = t.descriptionRaw;
     requireAuth(`Alterar o lançamento "${label}".`, async () => {
-      updateTx(S, manualForm.editId, data);
+      updateTx(S, editId, data);
       SFSec.logEvent(S, 'ACAO_CRITICA', null, `lançamento alterado manualmente`);
     });
+    closeManualForm();
   } else {
     addManualTx(S, extAccount, data);
     persistNow();
+    closeManualForm();
   }
-  closeManualForm();
 }
 function deleteManualTx(txId) {
   const t = S.txs.find((x) => x.id === txId);
@@ -3360,6 +3373,7 @@ function viewContas() {
     </div>
     <div class="chips">${S.people.map((p) => `<span class="chip removable">${esc(p.name)} <button class="chip-x" title="Remover pessoa" onclick="askRemovePerson('${p.id}')">×</button></span>`).join('') || '<div class="empty">Cadastre você e a Márcia para começar.</div>'}</div>
   </div>
+  ${categoriesCard()}
   ${batches.length ? `<div class="card"><h3>Importações recentes</h3>
     ${batches.map((b) => `<div class="row"><div class="grow"><div class="desc">${esc(b.fileName)}</div><div class="sub">${esc(accountById(S, b.accountId)?.name || '')} · ${b.imported} importados</div></div><button class="ghost sm" onclick="askRollback('${b.id}')">Desfazer</button></div>`).join('')}
   </div>` : ''}
@@ -3397,6 +3411,72 @@ function askRemovePerson(personId) {
     const r = removePerson(S, personId);
     if (r.removed) SFSec.logEvent(S, 'ACAO_CRITICA', null, `pessoa "${p.name}" excluída`);
   });
+}
+/* ───────── Categorias: cadastrar, alterar, excluir ───────── */
+function openNewCategory() { categoryForm = { open: true, editId: null, name: '', kind: 'DESPESA' }; render(); }
+function openEditCategory(catId) {
+  const c = S.categories.find((x) => x.id === catId);
+  if (!c) return;
+  categoryForm = { open: true, editId: catId, name: c.name, kind: c.kind };
+  render();
+}
+function closeCategoryForm() { categoryForm = { open: false, editId: null, name: '', kind: 'DESPESA' }; render(); }
+function saveCategoryForm() {
+  const name = $('#catf-name').value.trim();
+  const kind = $('#catf-kind').value;
+  if (!name) { alert('Informe um nome para a categoria.'); return; }
+  const dup = S.categories.find((c) => c.id !== categoryForm.editId && c.name.trim().toLowerCase() === name.toLowerCase());
+  if (dup) { alert(`Já existe uma categoria chamada "${dup.name}".`); return; }
+  if (categoryForm.editId) {
+    const c = S.categories.find((x) => x.id === categoryForm.editId);
+    if (c) { c.name = name; c.kind = kind; }
+  } else {
+    S.categories.push({ id: uid(), name, kind });
+  }
+  persist();
+  closeCategoryForm();
+}
+function askRemoveCategory(catId) {
+  const c = S.categories.find((x) => x.id === catId);
+  if (!c) return;
+  const usedTxs = S.txs.filter((t) => t.categoryId === catId).length;
+  const usedPlanned = (S.planned || []).filter((p) => p.categoryId === catId).length;
+  if (usedTxs || usedPlanned) {
+    alert(
+      `Não dá para excluir "${c.name}" enquanto ela estiver em uso.\n\n` +
+      `${usedTxs ? `· ${usedTxs} lançamento(s)\n` : ''}${usedPlanned ? `· ${usedPlanned} previsão(ões)\n` : ''}` +
+      `\nAltere a categoria desses itens (ou deixe "Sem categoria") e depois exclua "${c.name}".`
+    );
+    return;
+  }
+  if (!confirm(`Excluir a categoria "${c.name}" permanentemente?`)) return;
+  S.categories = S.categories.filter((x) => x.id !== catId);
+  S.rules = S.rules.filter((r) => r.categoryId !== catId); // regras de classificação automática que apontavam pra ela deixam de existir
+  persist(); render();
+}
+function categoryFormHtml() {
+  const isEdit = !!categoryForm.editId;
+  return `<div class="form">
+    <input id="catf-name" placeholder="Nome da categoria" value="${esc(categoryForm.name)}">
+    <select id="catf-kind">
+      <option value="DESPESA" ${categoryForm.kind === 'DESPESA' ? 'selected' : ''}>Despesa</option>
+      <option value="RECEITA" ${categoryForm.kind === 'RECEITA' ? 'selected' : ''}>Receita</option>
+    </select>
+    <div class="btns">
+      <button class="primary sm" onclick="saveCategoryForm()">${isEdit ? 'Salvar alteração' : 'Adicionar categoria'}</button>
+      <button class="ghost sm" onclick="closeCategoryForm()">Cancelar</button>
+    </div>
+  </div>`;
+}
+function categoriesCard() {
+  const groups = [['DESPESA', 'Despesas'], ['RECEITA', 'Receitas']];
+  return `<div class="card">
+    <h3>Categorias <button class="primary sm right" onclick="openNewCategory()">Nova categoria</button></h3>
+    ${categoryForm.open ? categoryFormHtml() : ''}
+    ${groups.map(([kind, label]) => `
+      <div class="sub" style="margin-top:8px"><b>${label}</b></div>
+      <div class="chips">${S.categories.filter((c) => c.kind === kind).map((c) => `<span class="chip removable">${esc(c.name)} <button class="chip-x" title="Editar categoria" onclick="openEditCategory('${c.id}')">✎</button><button class="chip-x" title="Excluir categoria" onclick="askRemoveCategory('${c.id}')">×</button></span>`).join('') || '<span class="empty">Nenhuma ainda.</span>'}</div>`).join('')}
+  </div>`;
 }
 function addAccount() {
   const name = $('#acc-name').value.trim();
