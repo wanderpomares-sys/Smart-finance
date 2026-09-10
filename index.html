@@ -155,6 +155,13 @@ input[type=password] { width:100%; font-family:inherit; font-size:1.3rem; paddin
 select.cat { margin:8px 0 0; padding:8px; font-size:0.95rem; }
 .form { padding:10px 0; }
 .form.hidden, .hidden { display:none; }
+.limitbar { height:10px; background:#EEF1F4; border-radius:999px; overflow:hidden; margin:10px 0 6px; }
+.limitfill { height:100%; background:var(--pos); border-radius:999px; transition:width .3s; }
+.limitfill.warn { background:var(--brass); }
+.limitfill.danger { background:var(--neg); }
+.chip.warn { background:#FBF0DC; color:#8A6516; }
+.chip.danger { background:#F9E5E1; color:var(--neg); }
+.chip.good { background:#E9F4EF; color:var(--pos); }
 .suggest { border-bottom:1px solid #EEF1F4; padding:10px 0; }
 .suggest:last-child { border-bottom:none; }
 .btns { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
@@ -697,7 +704,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
-const APP_VERSION = '2026.08.24-c';  // muda a cada correção publicada
+const APP_VERSION = '2026.09.10-cartao';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -723,6 +730,100 @@ function saveState(s) {
 
 // ───────── consultas ─────────
 const INVESTED_TYPES = ['COFRINHO', 'INVESTIMENTO', 'POUPANCA'];
+const CARD_TYPES = ['CARTAO'];
+const isCard = (a) => CARD_TYPES.includes(a.type);
+
+/* ═══════════ Cartão de crédito ═══════════
+   A compra é a despesa (entra na data em que aconteceu, com categoria) mas não
+   sai do banco. O pagamento da fatura é uma transferência entre a conta e o
+   cartão — por isso os dois lançamentos recebem o mesmo linkId e ficam fora do
+   fluxo real, evitando contar o mesmo gasto duas vezes. */
+
+const clampDay = (ym, day) => {
+  const [y, m] = ym.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${ym}-${String(Math.min(day, last)).padStart(2, '0')}`;
+};
+
+/** Descobre em qual fatura uma compra cai, a partir do dia de fechamento. */
+function cycleOf(card, date) {
+  const closingDay = card.closingDay || 1;
+  const dueDay = card.dueDay || closingDay;
+  const ym = date.slice(0, 7);
+  const day = Number(date.slice(8, 10));
+  // compra feita depois do fechamento entra na fatura do mês seguinte
+  const closeYm = day > closingDay ? SFCore.addMonths(ym, 1) : ym;
+  const closeDate = clampDay(closeYm, closingDay);
+  // vencimento: no mesmo mês se o dia for posterior ao fechamento, senão no seguinte
+  const dueYm = dueDay > closingDay ? closeYm : SFCore.addMonths(closeYm, 1);
+  return { key: closeDate, closeDate, dueDate: clampDay(dueYm, dueDay) };
+}
+
+/** Monta todas as faturas do cartão a partir dos lançamentos. */
+function invoicesOf(s, card) {
+  const txs = s.txs.filter((t) => t.accountId === card.id);
+  const map = new Map();
+  const ensure = (key) => {
+    if (!map.has(key)) {
+      const [y, m, d] = key.split('-').map(Number);
+      const dueDay = card.dueDay || card.closingDay || 1;
+      const dueYm = dueDay > (card.closingDay || 1) ? key.slice(0, 7) : SFCore.addMonths(key.slice(0, 7), 1);
+      map.set(key, { key, closeDate: key, dueDate: clampDay(dueYm, dueDay), purchases: [], payments: [] });
+    }
+    return map.get(key);
+  };
+  for (const t of txs) {
+    if (t.amount > 0) {
+      // pagamento abate a fatura que ele quita (marcada no lançamento), não a do mês em que foi pago
+      ensure(t.invoiceKey || cycleOf(card, t.date).key).payments.push(t);
+    } else {
+      ensure(cycleOf(card, t.date).key).purchases.push(t);
+    }
+  }
+  const hoje = today();
+  const out = [...map.values()].map((inv) => {
+    const total = -inv.purchases.reduce((x, t) => x + t.amount, 0);
+    const paid = inv.payments.reduce((x, t) => x + t.amount, 0);
+    const open = inv.closeDate > hoje;
+    const remaining = total - paid;
+    let status;
+    if (open) status = 'ABERTA';        // ajustado adiante: a mais próxima fica ABERTA, as demais FUTURA
+    else if (remaining <= 0) status = 'PAGA';
+    else if (paid > 0) status = 'PARCIAL';
+    else if (inv.dueDate < hoje) status = 'VENCIDA';
+    else status = 'FECHADA';
+    return { ...inv, total, paid, remaining, status, open };
+  }).sort((a, b) => b.closeDate.localeCompare(a.closeDate));
+  // entre as ainda não fechadas, só a que fecha primeiro é a "atual";
+  // as posteriores são parcelas já comprometidas em faturas futuras
+  const abertas = out.filter((i) => i.status === 'ABERTA').sort((a, b) => a.closeDate.localeCompare(b.closeDate));
+  abertas.slice(1).forEach((i) => { i.status = 'FUTURA'; });
+  return out;
+}
+
+/** Situação resumida do cartão: fatura atual, próxima a vencer e uso do limite. */
+function cardSummary(s, card) {
+  const list = invoicesOf(s, card);
+  const current = list.find((i) => i.status === 'ABERTA') || null;
+  const toPay = list.filter((i) => ['FECHADA', 'PARCIAL', 'VENCIDA'].includes(i.status))
+                    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  const debt = -balance(s, card);                    // saldo do cartão é negativo
+  const limit = card.creditLimit || 0;
+  const available = limit ? limit - debt : null;
+  const hoje = today();
+  const daysTo = (d) => Math.round((Date.parse(d + 'T00:00:00Z') - Date.parse(hoje + 'T00:00:00Z')) / 86400000);
+  // parcelas já lançadas para faturas futuras
+  const future = list.filter((i) => i.status === 'FUTURA');
+  return {
+    card, invoices: list, current, toPay, debt, limit, available,
+    usedPct: limit ? Math.min(1, debt / limit) : null,
+    daysToClose: current ? daysTo(current.closeDate) : null,
+    nextDue: toPay[0] || null,
+    daysToDue: toPay[0] ? daysTo(toPay[0].dueDate) : null,
+    committedAhead: future.reduce((x, i) => x + i.total, 0),
+    bestBuyDay: card.closingDay ? (card.closingDay % 31) + 1 : null,
+  };
+}
 let valuesHidden = true; // privacidade: o app sempre abre com os valores ocultos
 const MASK = 'R$ ••••••';
 const realBRL = (c) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -1169,8 +1270,34 @@ function simulate(s, principal, months, index, pctOfIndex, type) {
 
 /* ───────── Fase 2 — previsto × realizado (seções 8 e 2) ───────── */
 
+/** Faturas ainda não quitadas viram compromissos a pagar, para aparecerem no
+ *  calendário e na projeção. Some sozinho quando a fatura é paga. */
+function cardPlannedItems(s) {
+  const out = [];
+  for (const card of s.accounts.filter(isCard)) {
+    for (const inv of invoicesOf(s, card)) {
+      if (inv.remaining <= 0) continue;
+      if (inv.status === 'FUTURA') continue;   // ainda pode mudar até fechar
+      out.push({
+        id: 'fatura-' + card.id + '-' + inv.key,
+        description: `Fatura ${card.name}`,
+        kind: 'A_PAGAR', expectedAmount: inv.remaining,
+        dueDate: inv.dueDate,
+        status: inv.dueDate < today() ? 'ATRASADO' : 'PREVISTO',
+        installmentInfo: null, recurringKey: null, virtual: true,
+      });
+    }
+  }
+  return out;
+}
+/** Compromissos reais + faturas em aberto. */
+function plannedWithCards(s) { return [...s.planned, ...cardPlannedItems(s)]; }
+
 function planTxs(s) {
-  return s.txs.map((t) => ({
+  // compras no cartão não são saída de dinheiro na data da compra — o caixa só
+  // é afetado no pagamento da fatura, que entra como compromisso a pagar
+  const cardIds = new Set(s.accounts.filter(isCard).map((a) => a.id));
+  return s.txs.filter((t) => !cardIds.has(t.accountId)).map((t) => ({
     id: t.id, date: t.date, amount: t.amount, descriptionNorm: t.descriptionNorm,
     descriptionRaw: t.descriptionRaw, categoryId: t.categoryId, linkId: t.linkId, txType: t.txType,
   }));
@@ -1218,7 +1345,7 @@ function consolidatedView(s, monthsBack, monthsAhead) {
   syncPlanned(s);
   const pos = positionByPerson(s);
   const rows = SFCore.consolidated({
-    txs: planTxs(s), planned: s.planned, recurring: recurringItems(s),
+    txs: planTxs(s), planned: plannedWithCards(s), recurring: recurringItems(s),
     netWorthNow: pos.family.total, today: today(),
     monthsBack: monthsBack ?? 3, monthsAhead: monthsAhead ?? 8,
   });
@@ -1304,7 +1431,7 @@ function calendarFor(s, month) {
   const accounts = s.accounts.map((x) => ({ id: x.id, anchorBalance: x.anchorBalance || 0 }));
   const txsForBalance = s.txs.map((t) => ({ accountId: t.accountId, date: t.date, amount: t.amount }));
   const startBalance = SFCore.balanceBeforeMonth(accounts, txsForBalance, month);
-  return SFCore.calendarMonth(month, planTxs(s), s.planned, { today: today(), startBalance });
+  return SFCore.calendarMonth(month, planTxs(s), plannedWithCards(s), { today: today(), startBalance });
 }
 
 /** Linhas do extrato prontas para planilha. */
@@ -1472,10 +1599,66 @@ function removeDuplicateTx(s, txIds) {
   return removed;
 }
 
+/** Registra o pagamento (total ou parcial) de uma fatura.
+ *  Gera dois lançamentos vinculados: saída na conta e abatimento no cartão.
+ *  Por serem vinculados, não entram no fluxo real — a despesa já foi a compra. */
+function payInvoice(s, cardId, invoiceKey, amountCents, date, fromAccountId) {
+  const card = s.accounts.find((a) => a.id === cardId);
+  const from = s.accounts.find((a) => a.id === fromAccountId);
+  if (!card || !from) throw new Error('Conta ou cartão não encontrado.');
+  if (!(amountCents > 0)) throw new Error('Informe um valor maior que zero.');
+  const inv = invoicesOf(s, card).find((i) => i.key === invoiceKey);
+  const label = inv ? `fatura ${SFCore.monthOf(inv.dueDate)}` : 'fatura';
+  const link = { id: uid(), status: 'CONFIRMED', confidence: 100, kind: 'FATURA' };
+  s.links.push(link);
+  const mk = (accountId, amount, desc) => ({
+    id: uid(), accountId, date, amount,
+    descriptionRaw: desc, descriptionNorm: SFCore.normalizeDescription(desc),
+    txType: amount < 0 ? 'TRANSF_OUT' : 'TRANSF_IN',
+    counterpartyName: null, counterpartyDoc: null,
+    categoryId: null, linkId: link.id, batchId: null, hash: null, seqInDay: 0,
+  });
+  s.txs.push(mk(fromAccountId, -amountCents, `Pagamento ${label} ${card.name}`));
+  s.txs.push({ ...mk(cardId, amountCents, `Pagamento recebido ${label}`), invoiceKey });
+  // marca a fatura como quitada quando o pagamento cobre o total
+  if (inv && amountCents >= inv.remaining) {
+    card.paidInvoices = card.paidInvoices || [];
+    if (!card.paidInvoices.includes(invoiceKey)) card.paidInvoices.push(invoiceKey);
+  }
+  SFSec.logEvent(s, 'ACAO_CRITICA', null, `pagamento de ${fmtBRL(amountCents)} da fatura ${card.name}`);
+  return { linkId: link.id };
+}
+
+/** Compra parcelada no cartão: distribui as parcelas pelas faturas seguintes. */
+function addCardInstallments(s, cardId, { date, totalCents, description, categoryId, installments }) {
+  const card = s.accounts.find((a) => a.id === cardId);
+  if (!card) throw new Error('Cartão não encontrado.');
+  const n = Math.max(1, Math.min(60, installments || 1));
+  const base = Math.floor(totalCents / n);
+  const rest = totalCents - base * n;   // sobra vai na primeira parcela
+  const ym = date.slice(0, 7);
+  const day = Number(date.slice(8, 10));
+  const created = [];
+  for (let i = 0; i < n; i++) {
+    const amount = -(base + (i === 0 ? rest : 0));
+    const d = i === 0 ? date : clampDay(SFCore.addMonths(ym, i), day);
+    const desc = n > 1 ? `${description} (${i + 1}/${n})` : description;
+    const tx = { id: uid(), accountId: cardId, date: d, amount,
+      descriptionRaw: desc, descriptionNorm: SFCore.normalizeDescription(desc),
+      txType: 'COMPRA_CREDITO', counterpartyName: null, counterpartyDoc: null,
+      categoryId: categoryId || null, linkId: null, batchId: null, hash: null, seqInDay: 0 };
+    s.txs.push(tx); created.push(tx);
+  }
+  return created;
+}
+
 function dashboard(s) {
   const withBal = s.accounts.map((a) => ({ ...a, balance: balance(s, a) }));
   const invested = withBal.filter((a) => INVESTED_TYPES.includes(a.type)).reduce((x, a) => x + a.balance, 0);
-  const inAccounts = withBal.filter((a) => !INVESTED_TYPES.includes(a.type)).reduce((x, a) => x + a.balance, 0);
+  // o cartão não é dinheiro disponível: entra como dívida, separado do saldo em conta
+  const inAccounts = withBal.filter((a) => !INVESTED_TYPES.includes(a.type) && !isCard(a)).reduce((x, a) => x + a.balance, 0);
+  const cardDebt = withBal.filter(isCard).reduce((x, a) => x + a.balance, 0);   // negativo
+  const cards = withBal.filter(isCard).map((c) => cardSummary(s, c));
   const month = new Date().toISOString().slice(0, 7);
   let income = 0, expense = 0;
   for (const t of s.txs) {
@@ -1493,7 +1676,7 @@ function dashboard(s) {
     .map((i) => ({ inv: i, perf: SFCore.performance(i, s.market, today()) }))
     .filter((r) => (r.perf.deviation != null && r.perf.deviation < 0) || !r.perf.beatsInflation);
   const totalDiff = s.checks.filter((c) => c.status === 'DIVERGENT').reduce((x, c) => x + c.difference, 0);
-  return { month, accounts: withBal, totals: { inAccounts, invested, netWorth: inAccounts + invested },
+  return { month, accounts: withBal, cards, totals: { inAccounts, invested, cardDebt, netWorth: inAccounts + invested + cardDebt },
            monthFlow: { income, expense, result: income + expense }, latest,
            pendingSuggestions: s.links.filter((l) => l.status === 'SUGGESTED').length,
            needsReview, totalDiff, allReconciled: needsReview.length === 0, invAlerts, overdue, budgetAlerts };
@@ -1511,7 +1694,7 @@ const $ = (sel) => document.querySelector(sel);
 const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const INST_COLOR = { ITAU:'#EC7000', NUBANK:'#820AD1', MERCADO_PAGO:'#009EE3', BRADESCO:'#CC092F', SANTANDER:'#EC0000', PICPAY:'#21C25E', CARTEIRA:'#5A6B7F', OUTRO:'#5A6B7F' };
 const INSTITUTIONS = ['ITAU','NUBANK','MERCADO_PAGO','BRADESCO','SANTANDER','PICPAY','CARTEIRA','OUTRO'];
-const ACC_TYPES = ['CORRENTE','PAGAMENTO','POUPANCA','COFRINHO','INVESTIMENTO'];
+const ACC_TYPES = ['CORRENTE','PAGAMENTO','POUPANCA','COFRINHO','INVESTIMENTO','CARTAO'];
 const dot = (inst) => `<span class="dot" style="background:${INST_COLOR[inst]||'#999'}"></span>`;
 const amountCls = (t) => t.linkId ? 'neutral' : (t.amount >= 0 ? 'pos' : 'neg');
 const statusBadge = (st) => st === 'NECESSITA_CONFERENCIA' ? '<span class="chip warn-chip">⚠ Necessita conferência</span>'
@@ -1616,6 +1799,7 @@ function viewInicio() {
     <div class="hero-split">
       <div><span>Em conta</span><b>${fmtBRL(d.totals.inAccounts)}</b></div>
       <div><span>Aplicado</span><b class="brass">${fmtBRL(d.totals.invested)}</b></div>
+      ${d.totals.cardDebt ? `<div><span>Cartões</span><b class="neg">${fmtBRL(d.totals.cardDebt)}</b></div>` : ''}
     </div>
     ${d.needsReview.length ? '<div class="hero-warn">⚠ Inclui conta(s) não conciliada(s) com o banco</div>' : (S.accounts.length ? '<div class="hero-ok">✓ Confere com os saldos do banco</div>' : '')}
   </div>
@@ -1628,6 +1812,10 @@ function viewInicio() {
     </div>
     <div class="hint">Transferências entre as contas da família não entram aqui.</div>
   </div>
+  ${d.cards.map((sum) => cardAlerts(sum).map((a) => `<div class="${a.tone === 'error' ? 'error' : 'banner warn'}">
+      ${esc(sum.card.name)}: ${a.text}
+      <div class="btns"><button class="primary sm" onclick="cardTab='${sum.card.id}';setTab('cartoes')">Abrir cartão</button></div>
+    </div>`).join('')).join('')}
   ${(function(){ const dups = allDuplicateClusters(S); const n = Object.values(dups).reduce((s,c)=>s+c.reduce((m,x)=>m+x.removeIds.length,0),0);
     return n ? `<div class="banner warn">
       ⚠ ${n} possível(is) lançamento(s) duplicado(s) encontrado(s) entre importações — pode estar afetando o saldo.
@@ -1908,7 +2096,7 @@ async function doUnlockBio() {
   lockBusy = false; render();
 }
 
-const VALID_TABS = ['inicio', 'consolidado', 'importar', 'extrato', 'contas', 'calendario', 'consultor', 'relatorios', 'auditoria', 'investir', 'seguranca', 'mais'];
+const VALID_TABS = ['inicio', 'consolidado', 'importar', 'extrato', 'contas', 'calendario', 'consultor', 'relatorios', 'auditoria', 'investir', 'cartoes', 'seguranca', 'mais'];
 function tabFromUrl() {
   try {
     const t = new URLSearchParams(window.location.search).get('tab');
@@ -2145,6 +2333,7 @@ function doNewRecovery() {
 function viewMais() {
   const items = [
     ['contas', '⛁', 'Contas e pessoas', 'Cadastro, saldos e transferências sugeridas'],
+    ['cartoes', '▢', 'Cartões de crédito', 'Faturas, limite, parcelas e pagamento'],
     ['calendario', '▥', 'Calendário', 'O que já saiu e o que ainda vence no mês'],
     ['consultor', '✦', 'Consultor', 'Insights, projeções e simulador de dívida × investimento'],
     ['relatorios', '▤', 'Relatórios', 'Evolução do patrimônio, orçamento e exportação'],
@@ -3352,8 +3541,18 @@ function viewContas() {
     <div id="form-acc" class="form hidden">
       <input id="acc-name" placeholder="Nome da conta (ex.: Itaú Corrente)">
       <select id="acc-inst">${INSTITUTIONS.map((i) => `<option value="${i}">${i.replace('_', ' ')}</option>`).join('')}</select>
-      <select id="acc-type">${ACC_TYPES.map((t) => `<option value="${t}">${t}</option>`).join('')}</select>
+      <select id="acc-type" onchange="toggleCardFields()">${ACC_TYPES.map((t) => `<option value="${t}">${t === 'CARTAO' ? 'CARTÃO DE CRÉDITO' : t}</option>`).join('')}</select>
       <select id="acc-owner">${S.people.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
+      <div id="acc-card-fields" class="hidden">
+        <div class="hint">Esses dados estão na fatura ou no app do banco.</div>
+        <input id="acc-closing" placeholder="Dia do fechamento (ex.: 20)" inputmode="numeric">
+        <input id="acc-due" placeholder="Dia do vencimento (ex.: 28)" inputmode="numeric">
+        <input id="acc-limit" placeholder="Limite total (ex.: 5.000,00)" inputmode="decimal">
+        <select id="acc-payfrom">
+          <option value="">Conta que paga a fatura (opcional)</option>
+          ${S.accounts.filter((a) => !isCard(a)).map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
+        </select>
+      </div>
       <div class="hint">O saldo vem sozinho do primeiro extrato que você importar — não precisa digitar nada.</div>
       <button class="primary" onclick="addAccount()">Salvar conta</button>
     </div>
@@ -3478,12 +3677,220 @@ function categoriesCard() {
       <div class="chips">${S.categories.filter((c) => c.kind === kind).map((c) => `<span class="chip removable">${esc(c.name)} <button class="chip-x" title="Editar categoria" onclick="openEditCategory('${c.id}')">✎</button><button class="chip-x" title="Excluir categoria" onclick="askRemoveCategory('${c.id}')">×</button></span>`).join('') || '<span class="empty">Nenhuma ainda.</span>'}</div>`).join('')}
   </div>`;
 }
+/* ═══════════ Tela do cartão de crédito ═══════════ */
+let cardTab = null;           // cartão selecionado
+let cardPayForm = null;       // { cardId, invoiceKey, max }
+let cardBuyOpen = false;      // formulário de compra manual
+
+const INVOICE_LABEL = { ABERTA: 'Fatura aberta', FUTURA: 'Fatura futura', FECHADA: 'Fechada — a pagar',
+                        PARCIAL: 'Parcialmente paga', VENCIDA: 'VENCIDA', PAGA: 'Paga' };
+const INVOICE_TONE = { ABERTA: 'chip', FUTURA: 'chip', FECHADA: 'chip warn', PARCIAL: 'chip warn',
+                       VENCIDA: 'chip danger', PAGA: 'chip good' };
+
+function viewCartoes() {
+  const cards = S.accounts.filter(isCard);
+  if (!cards.length) {
+    return `<div class="card">
+      <h3>Cartões de crédito</h3>
+      <div class="empty">Nenhum cartão cadastrado.</div>
+      <div class="hint">Cadastre em <b>Contas e pessoas</b> escolhendo o tipo <b>CARTÃO DE CRÉDITO</b>. Você vai precisar do dia de fechamento e do dia de vencimento da fatura — os dois estão na sua fatura ou no app do banco.</div>
+      <div class="btns"><button class="primary sm" onclick="setTab('contas')">Ir para Contas</button></div>
+    </div>`;
+  }
+  if (!cardTab || !cards.some((c) => c.id === cardTab)) cardTab = cards[0].id;
+  const card = cards.find((c) => c.id === cardTab);
+  const sum = cardSummary(S, card);
+  const alerts = cardAlerts(sum);
+
+  return `
+  ${cards.length > 1 ? `<div class="card"><div class="chips">${cards.map((c) =>
+    `<button class="chip clickable ${c.id === cardTab ? 'sel' : ''}" onclick="cardTab='${c.id}';cardPayForm=null;render()">${esc(c.name)}</button>`).join('')}</div></div>` : ''}
+
+  ${alerts.map((a) => `<div class="${a.tone}">${a.text}</div>`).join('')}
+
+  <div class="card">
+    <div class="row"><div class="grow"><h3>${esc(card.name)}</h3>
+      <div class="sub">Fecha dia ${card.closingDay} · vence dia ${card.dueDay}</div></div></div>
+    ${sum.limit ? `
+      <div class="limitbar"><div class="limitfill ${sum.usedPct > 0.8 ? 'danger' : sum.usedPct > 0.5 ? 'warn' : ''}" style="width:${(sum.usedPct * 100).toFixed(1)}%"></div></div>
+      <div class="row"><div class="grow sub">Usado ${fmtBRL(sum.debt)} de ${fmtBRL(sum.limit)}</div>
+        <div class="amt ${sum.available > 0 ? 'pos' : 'neg'}">${fmtBRL(sum.available)} livres</div></div>`
+      : '<div class="hint">Cadastre o limite do cartão para acompanhar quanto ainda está disponível.</div>'}
+    ${sum.bestBuyDay ? `<div class="suggestion">💡 <b>Melhor dia de compra: ${sum.bestBuyDay}.</b> Comprando logo depois do fechamento você ganha o prazo máximo até o vencimento.</div>` : ''}
+  </div>
+
+  ${sum.current ? `
+  <div class="card">
+    <div class="row"><div class="grow"><b>Fatura aberta</b><div class="sub">fecha em ${SFCore.formatBRL ? '' : ''}${fmtDate(sum.current.closeDate)} · vence ${fmtDate(sum.current.dueDate)}</div></div>
+      <div class="amt">${fmtBRL(sum.current.total)}</div></div>
+    <div class="hint">Ainda pode mudar até o fechamento${sum.daysToClose >= 0 ? ` (faltam ${sum.daysToClose} dia(s))` : ''}.</div>
+  </div>` : ''}
+
+  ${sum.toPay.length ? sum.toPay.map((inv) => `
+  <div class="card">
+    <div class="row"><div class="grow"><b>Fatura de ${fmtDate(inv.dueDate)}</b>
+      <div><span class="${INVOICE_TONE[inv.status]}">${INVOICE_LABEL[inv.status]}</span></div></div>
+      <div class="amt neg">${fmtBRL(inv.remaining)}</div></div>
+    ${inv.paid > 0 ? `<div class="sub">Total ${fmtBRL(inv.total)} · já pago ${fmtBRL(inv.paid)}</div>` : ''}
+    <div class="btns">
+      <button class="primary sm" onclick="openCardPay('${card.id}','${inv.key}',${inv.remaining})">Pagar fatura</button>
+    </div>
+    ${cardPayForm && cardPayForm.invoiceKey === inv.key ? cardPayFormHtml(card, inv) : ''}
+  </div>`).join('') : '<div class="card"><div class="empty">Nenhuma fatura fechada aguardando pagamento.</div></div>'}
+
+  ${sum.committedAhead > 0 ? `
+  <div class="card">
+    <h3>Já comprometido nas próximas faturas</h3>
+    <div class="hero-value">${fmtBRL(sum.committedAhead)}</div>
+    <div class="hint">Valor de parcelas que já vão cair nos próximos meses, mesmo que você não use mais o cartão.</div>
+    <table class="audit">
+      ${sum.invoices.filter((i) => i.status === 'FUTURA').sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+        .map((i) => `<tr><td>Vence ${fmtDate(i.dueDate)}</td><td class="amt">${fmtBRL(i.total)}</td></tr>`).join('')}
+    </table>
+  </div>` : ''}
+
+  <div class="card">
+    <div class="row"><div class="grow"><h3>Lançar compra</h3></div>
+      <button class="ghost sm" onclick="cardBuyOpen=!cardBuyOpen;render()">${cardBuyOpen ? 'Fechar' : '+ Nova compra'}</button></div>
+    ${cardBuyOpen ? cardBuyFormHtml(card) : '<div class="hint">Use para registrar uma compra que ainda não apareceu na fatura, inclusive parcelada.</div>'}
+  </div>
+
+  <div class="card">
+    <h3>Histórico de faturas</h3>
+    ${sum.invoices.length ? `<table class="audit">
+      <tr><th>Vencimento</th><th>Total</th><th>Situação</th></tr>
+      ${sum.invoices.map((i) => `<tr><td>${fmtDate(i.dueDate)}</td><td class="amt">${fmtBRL(i.total)}</td>
+        <td><span class="${INVOICE_TONE[i.status]}">${INVOICE_LABEL[i.status]}</span></td></tr>`).join('')}
+    </table>` : '<div class="empty">Sem faturas ainda.</div>'}
+  </div>`;
+}
+
+/** Avisos de fechamento, vencimento, limite e rotativo. */
+function cardAlerts(sum) {
+  const out = [];
+  const d = sum.daysToDue;
+  if (sum.nextDue) {
+    if (d < 0) out.push({ tone: 'error', text: `<b>Fatura vencida há ${-d} dia(s):</b> ${fmtBRL(sum.nextDue.remaining)}. Juros do rotativo são os mais altos do mercado — quite ou negocie o quanto antes.` });
+    else if (d === 0) out.push({ tone: 'error', text: `<b>A fatura vence HOJE:</b> ${fmtBRL(sum.nextDue.remaining)}.` });
+    else if (d <= 5) out.push({ tone: 'banner', text: `<b>Fatura vence em ${d} dia(s):</b> ${fmtBRL(sum.nextDue.remaining)}.` });
+  }
+  if (sum.daysToClose != null && sum.daysToClose >= 0 && sum.daysToClose <= 3 && sum.current) {
+    out.push({ tone: 'banner', text: `<b>A fatura fecha em ${sum.daysToClose} dia(s)</b> com ${fmtBRL(sum.current.total)} até agora. Compras a partir do dia ${sum.bestBuyDay} já caem na fatura seguinte.` });
+  }
+  if (sum.usedPct != null && sum.usedPct >= 0.8) {
+    out.push({ tone: 'banner', text: `<b>Limite quase no fim:</b> ${(sum.usedPct * 100).toFixed(0)}% usado, restam ${fmtBRL(sum.available)}.` });
+  }
+  return out;
+}
+
+function openCardPay(cardId, invoiceKey, max) {
+  cardPayForm = { cardId, invoiceKey, max };
+  render();
+}
+function cardPayFormHtml(card, inv) {
+  const contas = S.accounts.filter((a) => !isCard(a));
+  const padrao = card.paymentAccountId || (contas[0] && contas[0].id) || '';
+  return `<div class="form">
+    <div class="hint">O valor sai da conta escolhida e abate a fatura. Como é transferência, não conta como despesa nova — a despesa foi a compra.</div>
+    <input id="cp-date" placeholder="Data do pagamento (dd/mm/aaaa)" value="${fmtDate(today())}">
+    <input id="cp-amount" placeholder="Valor" value="${(inv.remaining / 100).toFixed(2).replace('.', ',')}">
+    <select id="cp-from">${contas.map((a) => `<option value="${a.id}" ${a.id === padrao ? 'selected' : ''}>${esc(a.name)} · ${fmtBRL(balance(S, a))}</option>`).join('')}</select>
+    <div class="chips">
+      <button class="chip clickable" onclick="setPayAmount(${inv.remaining})">Total ${fmtBRL(inv.remaining)}</button>
+      <button class="chip clickable" onclick="setPayAmount(${Math.round(inv.remaining * 0.5)})">Metade</button>
+      <button class="chip clickable" onclick="setPayAmount(${Math.round(inv.total * 0.15)})">Mínimo (15%)</button>
+    </div>
+    <div id="cp-warn"></div>
+    <div class="btns">
+      <button class="primary sm" onclick="saveCardPay()">Confirmar pagamento</button>
+      <button class="ghost sm" onclick="cardPayForm=null;render()">Cancelar</button>
+    </div>
+  </div>`;
+}
+function setPayAmount(cents) {
+  const el = $('#cp-amount');
+  if (el) el.value = (cents / 100).toFixed(2).replace('.', ',');
+  showRotativoWarn();
+}
+/** Avisa o custo de deixar saldo no rotativo ao pagar menos que o total. */
+function showRotativoWarn() {
+  const box = $('#cp-warn'); if (!box || !cardPayForm) return;
+  const v = SFCore.parseMoney($('#cp-amount').value || '');
+  const resta = cardPayForm.max - (Number.isNaN(v) ? 0 : Math.abs(v));
+  if (resta <= 0) { box.innerHTML = ''; return; }
+  // taxa média do rotativo no Brasil gira em torno de 14% ao mês
+  const juros = Math.round(resta * 0.14);
+  box.innerHTML = `<div class="warnline">Sobram ${fmtBRL(resta)} no rotativo. A juros de cerca de 14% ao mês, isso vira aproximadamente <b>${fmtBRL(resta + juros)}</b> na próxima fatura (${fmtBRL(juros)} só de juros). Se puder, pague o total.</div>`;
+}
+function saveCardPay() {
+  if (!cardPayForm) return;
+  const date = SFCore.brDateToISO(($('#cp-date').value || '').trim());
+  const v = SFCore.parseMoney($('#cp-amount').value || '');
+  const from = $('#cp-from').value;
+  if (!date) { alert('Data inválida — use dd/mm/aaaa.'); return; }
+  if (Number.isNaN(v) || v === 0) { alert('Informe o valor do pagamento.'); return; }
+  if (!from) { alert('Escolha a conta de onde sai o pagamento.'); return; }
+  const amount = Math.abs(v);
+  if (amount > cardPayForm.max) {
+    if (!confirm(`O valor é maior que o saldo da fatura (${fmtBRL(cardPayForm.max)}). Confirmar mesmo assim?`)) return;
+  }
+  try {
+    payInvoice(S, cardPayForm.cardId, cardPayForm.invoiceKey, amount, date, from);
+    persistNow(); cardPayForm = null; render();
+  } catch (e) { alert(e.message); }
+}
+
+function cardBuyFormHtml(card) {
+  return `<div class="form">
+    <input id="cb-date" placeholder="Data da compra (dd/mm/aaaa)" value="${fmtDate(today())}">
+    <input id="cb-desc" placeholder="Descrição (ex.: Geladeira)">
+    <input id="cb-amount" placeholder="Valor total da compra">
+    <input id="cb-inst" placeholder="Número de parcelas (1 = à vista)" value="1" inputmode="numeric">
+    <select id="cb-cat"><option value="">Sem categoria</option>${S.categories.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
+    <div class="hint">Em compra parcelada, cada parcela cai automaticamente na fatura do mês correspondente.</div>
+    <div class="btns">
+      <button class="primary sm" onclick="saveCardBuy()">Lançar compra</button>
+      <button class="ghost sm" onclick="cardBuyOpen=false;render()">Cancelar</button>
+    </div>
+  </div>`;
+}
+function saveCardBuy() {
+  const date = SFCore.brDateToISO(($('#cb-date').value || '').trim());
+  const desc = ($('#cb-desc').value || '').trim();
+  const v = SFCore.parseMoney($('#cb-amount').value || '');
+  const n = parseInt(($('#cb-inst').value || '1').replace(/\D/g, ''), 10) || 1;
+  if (!date) { alert('Data inválida — use dd/mm/aaaa.'); return; }
+  if (!desc) { alert('Informe a descrição da compra.'); return; }
+  if (Number.isNaN(v) || v === 0) { alert('Informe o valor da compra.'); return; }
+  try {
+    addCardInstallments(S, cardTab, { date, totalCents: Math.abs(v), description: desc,
+      categoryId: $('#cb-cat').value || null, installments: n });
+    persistNow(); cardBuyOpen = false; render();
+  } catch (e) { alert(e.message); }
+}
+
+function toggleCardFields() {
+  const box = $('#acc-card-fields');
+  if (box) box.classList.toggle('hidden', $('#acc-type').value !== 'CARTAO');
+}
 function addAccount() {
   const name = $('#acc-name').value.trim();
   if (!name) return;
-  S.accounts.push({ id: uid(), name, institution: $('#acc-inst').value, type: $('#acc-type').value,
-    ownerId: $('#acc-owner').value, anchorBalance: null, anchorDate: null, anchorBatchId: null });
-  persist(); render();
+  const type = $('#acc-type').value;
+  const acc = { id: uid(), name, institution: $('#acc-inst').value, type,
+    ownerId: $('#acc-owner').value, anchorBalance: null, anchorDate: null, anchorBatchId: null };
+  if (type === 'CARTAO') {
+    const dia = (sel) => { const n = parseInt(($(sel).value || '').replace(/\D/g, ''), 10); return (n >= 1 && n <= 31) ? n : null; };
+    acc.closingDay = dia('#acc-closing');
+    acc.dueDay = dia('#acc-due');
+    const lim = SFCore.parseMoney($('#acc-limit').value || '');
+    acc.creditLimit = Number.isNaN(lim) ? null : Math.abs(lim);
+    acc.paymentAccountId = $('#acc-payfrom').value || null;
+    acc.anchorBalance = 0;   // cartão começa sem dívida; as compras é que formam o saldo
+    if (!acc.closingDay || !acc.dueDay) { alert('Informe o dia de fechamento e o de vencimento da fatura.'); return; }
+  }
+  S.accounts.push(acc);
+  persistNow(); render();
 }
 async function impFile(file) {
   if (!file) return;
@@ -3569,7 +3976,7 @@ function render() {
   if (!S || !SFSec.isUnlocked()) { bootScreen(); return; }
   document.body.classList.remove('locked');
   const views = { inicio: viewInicio, importar: viewImportar, extrato: viewExtrato, contas: viewContas,
-                  auditoria: viewAuditoria, investir: viewInvestir, seguranca: viewSeguranca, consolidado: viewConsolidado, relatorios: viewRelatorios, calendario: viewCalendario, consultor: viewConsultor, mais: viewMais };
+                  auditoria: viewAuditoria, investir: viewInvestir, cartoes: viewCartoes, seguranca: viewSeguranca, consolidado: viewConsolidado, relatorios: viewRelatorios, calendario: viewCalendario, consultor: viewConsultor, mais: viewMais };
   const health = SFSec.saveHealth();
   $('#view').innerHTML =
     (storageOk ? '' : '<div class="error">Este navegador não permitiu salvar dados (modo de visualização?). Baixe o arquivo e abra direto no navegador do seu computador ou celular.</div>')
