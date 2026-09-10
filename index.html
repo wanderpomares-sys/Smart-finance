@@ -704,7 +704,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
-const APP_VERSION = '2026.09.10-cartao';  // muda a cada correção publicada
+const APP_VERSION = '2026.09.10-fatura';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -1751,10 +1751,158 @@ function parseGenericCsv(text) {
   }
   return out;
 }
+
+/* ───────── Leitura automática de fatura de cartão (Itaú) ─────────
+   A compra é a despesa; o pagamento é uma transferência. Aqui só extraímos os
+   lançamentos da fatura em si (a lógica de fatura/parcela já existe acima).
+   Estratégia: em vez de confiar cegamente na data de cada linha (o layout em
+   duas colunas bagunça a extração, e "01/12" de uma parcela tem o mesmo
+   formato de uma data), lançamentos com valor exatamente oposto na mesma
+   fatura (uma compra parcelada e o cancelamento dela) se anulam entre si —
+   o efeito líquido é zero, então nem precisam de data certa. Sobra o que é
+   real. O total impresso na fatura confere a leitura, do mesmo jeito que o
+   saldo final confere a leitura de um extrato bancário. */
+function looksLikeCardInvoice(lines) {
+  const head = lines.slice(0, 40).join(' ');
+  return /TOTAL\s*DEST[A]?\s*FATURA|LIMITE\s*TOTAL\s*DE\s*CR[ÉE]DITO|O\s*TOTAL\s*DA\s*SUA\s*FATURA/i.test(head);
+}
+function normNoSpace(s) {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '').toUpperCase();
+}
+function findMarkerLine(lines, marker, from = 0) {
+  for (let i = from; i < lines.length; i++) if (normNoSpace(lines[i]).includes(marker)) return i;
+  return -1;
+}
+/** Valor em R$ tolerante a espaços perdidos dentro do número (ex.: "132, 46", "1.700, 00"). */
+const MONEY_LOOSE_SRC = '-?\\d{1,3}(?:\\.\\s?\\d{3})*\\s?,\\s?\\d\\s?\\d';
+function parseLooseMoney(raw) { return SFCore.parseMoney(raw.replace(/\s+/g, '')); }
+/** Acha um valor logo após uma palavra-chave, ignorando espaços perdidos dentro das letras. */
+function moneyAfterKeyword(flatText, keyword, maxGap = 25) {
+  const moneyAtStart = new RegExp('^(' + MONEY_LOOSE_SRC.replace(/\\s\?/g, '') + ')');
+  let from = 0;
+  while (true) {
+    const idx = flatText.indexOf(keyword, from);
+    if (idx < 0) return null; // nenhuma ocorrência tinha um valor logo depois
+    const window = flatText.slice(idx + keyword.length, idx + keyword.length + maxGap);
+    const m = window.match(moneyAtStart);
+    if (m) return SFCore.parseMoney(m[1]);
+    from = idx + keyword.length; // essa ocorrência era só texto corrido; tenta a próxima
+  }
+}
+const CARD_ENTRY_RE = new RegExp('(\\d{2}\\/\\d{2})\\s+([\\s\\S]*?)(' + MONEY_LOOSE_SRC + ')(?=\\s|$)', 'g');
+function extractCardEntries(text) {
+  const out = [];
+  let m;
+  CARD_ENTRY_RE.lastIndex = 0;
+  while ((m = CARD_ENTRY_RE.exec(text))) {
+    out.push({ dateBr: m[1], descRaw: m[2].replace(/\s+/g, ' ').trim(), valueCents: parseLooseMoney(m[3]) });
+  }
+  return out;
+}
+/** Ano provável de uma data dd/mm da fatura, a partir do vencimento (mesmo ciclo). */
+function inferInvoiceYear(dateBr, dueDate) {
+  const dueYear = Number(dueDate.slice(0, 4));
+  const dueMonth = Number(dueDate.slice(5, 7));
+  const entryMonth = Number(dateBr.split('/')[1]);
+  return entryMonth > dueMonth ? dueYear - 1 : dueYear;
+}
+function parseCardInvoiceLines(lines) {
+  const full = lines.join('\n');
+  const fullFlat = normNoSpace(full);
+  const totalFatura = moneyAfterKeyword(fullFlat, 'TOTALDESTAFATURA');
+  const dueMatch = full.match(/VENCIMENTO:\s*(\d{2}\/\d{2}\/\d{4})/i);
+  const dueDate = dueMatch ? SFCore.brDateToISO(dueMatch[1]) : null;
+  const nextClosingMatch = full.match(/PR[ÓO]X\.?\s*FECHAMENTO:\s*(\d{2}\/\d{2}\/\d{4})/i);
+  const nextClosingDate = nextClosingMatch ? SFCore.brDateToISO(nextClosingMatch[1]) : null;
+  const proximaFaturaTotal = moneyAfterKeyword(fullFlat, 'PROXIMAFATURA');
+  const demaisFaturasTotal = moneyAfterKeyword(fullFlat, 'DEMAISFATURAS');
+
+  const idxAtuais = findMarkerLine(lines, 'COMPRASESAQUES');
+  if (idxAtuais < 0 || !dueDate) return null; // não é o layout esperado
+  const idxLimites = findMarkerLine(lines, 'LIMITESDECREDITO', idxAtuais + 1);
+
+  const poolEnd = idxLimites >= 0 ? idxLimites : lines.length;
+  const entries = extractCardEntries(lines.slice(idxAtuais, poolEnd).join('\n'));
+
+  // 1) anula pares de valor exatamente oposto (compra + cancelamento na mesma fatura)
+  const groups = new Map();
+  entries.forEach((e, idx) => {
+    const abs = Math.abs(e.valueCents);
+    if (!groups.has(abs)) groups.set(abs, []);
+    groups.get(abs).push({ idx, sign: Math.sign(e.valueCents) });
+  });
+  const netted = new Set();
+  let nettedTotal = 0, nettedPairs = 0;
+  for (const [abs, arr] of groups) {
+    const pos = arr.filter((x) => x.sign > 0), neg = arr.filter((x) => x.sign < 0);
+    const n = Math.min(pos.length, neg.length);
+    for (let i = 0; i < n; i++) { netted.add(pos[i].idx); netted.add(neg[i].idx); nettedTotal += abs; nettedPairs++; }
+  }
+  const survivors = entries.filter((e, idx) => !netted.has(idx) && e.descRaw && e.valueCents !== 0);
+
+  // 2) dos sobreviventes, separa quem bate com o valor da "próxima fatura" (parcela futura já conhecida)
+  const currentEntries = [], futureEntries = [];
+  const usedAsFuture = new Set();
+  if (proximaFaturaTotal != null) {
+    survivors.forEach((e, idx) => { if (e.valueCents === proximaFaturaTotal) usedAsFuture.add(idx); });
+  }
+  survivors.forEach((e, idx) => (usedAsFuture.has(idx) ? futureEntries : currentEntries).push(e));
+
+  const sumCurrent = currentEntries.reduce((a, e) => a + e.valueCents, 0);
+  const diagnostics = [];
+  let confidence;
+  if (totalFatura != null && sumCurrent === totalFatura) {
+    confidence = 1;
+    diagnostics.push(`Os lançamentos lidos somam ${SFCore.formatBRL(sumCurrent)}, batendo com o total desta fatura.`);
+  } else if (totalFatura != null) {
+    confidence = 0.4;
+    diagnostics.push(`Atenção: os lançamentos lidos somam ${SFCore.formatBRL(sumCurrent)}, mas a fatura informa total de ${SFCore.formatBRL(totalFatura)}. Confira os lançamentos antes de importar.`);
+  } else {
+    confidence = 0.3;
+    diagnostics.push('Não encontrei o total impresso da fatura para conferir a leitura. Confira os lançamentos antes de importar.');
+  }
+  if (nettedPairs > 0) {
+    diagnostics.push(`${nettedPairs} lançamento(s) e seu(s) cancelamento(s) na mesma fatura (total de ${SFCore.formatBRL(nettedTotal)}) se anularam e não entram na importação.`);
+  }
+  if (demaisFaturasTotal) {
+    diagnostics.push(`Há ainda ${SFCore.formatBRL(demaisFaturasTotal)} em parcelas de faturas mais à frente, não detalhadas nesta fatura — serão importadas quando a fatura seguinte chegar.`);
+  }
+
+  const txsCurrent = currentEntries.map((e) => {
+    const iso = SFCore.brDateToISO(`${e.dateBr}/${inferInvoiceYear(e.dateBr, dueDate)}`);
+    return SFCore.toCanonical(iso || dueDate, -e.valueCents, e.descRaw);
+  });
+  const txsFuture = futureEntries.map((e) => SFCore.toCanonical(nextClosingDate || dueDate, -e.valueCents, e.descRaw));
+
+  return {
+    txs: [...txsCurrent, ...txsFuture],
+    dailyBalances: [],
+    meta: { hasBalances: false, totalFatura, dueDate, nextClosingDate, demaisFaturasTotal, proximaFaturaTotal },
+    calibration: { trustworthy: confidence >= 0.99, confidence, diagnostics, strategy: null, isInvoice: true },
+  };
+}
+
 async function parseAnyFile(file) {
   const name = file.name.toLowerCase();
   if (name.endsWith('.pdf')) {
     const lines = await pdfToLines(await file.arrayBuffer());
+    if (looksLikeCardInvoice(lines)) {
+      const invoice = parseCardInvoiceLines(lines);
+      if (invoice && invoice.txs.length) {
+        const cards = S.accounts.filter(isCard);
+        const resolution = {
+          identity: { institution: 'ITAU' },
+          matches: cards.map((a) => ({ account: a, score: 100, reasons: [] })),
+          best: cards[0] || null,
+          confident: cards.length === 1,
+          summary: cards.length
+            ? `Fatura de cartão de crédito identificada${invoice.meta.totalFatura != null ? `, total de ${SFCore.formatBRL(invoice.meta.totalFatura)}` : ''}.`
+            : 'Fatura de cartão identificada, mas nenhum cartão está cadastrado. Cadastre em Mais → Contas.',
+        };
+        return { txs: invoice.txs, dailyBalances: invoice.dailyBalances, meta: invoice.meta,
+                  lines, calibration: invoice.calibration, resolution };
+      }
+    }
     const resolution = resolveStatementAccount(S, lines);
     const read = readStatement(S, resolution.identity.institution || 'OUTRO', lines);
     if (!read.parsed.txs.length) {
@@ -3913,7 +4061,7 @@ function impCommit() {
   try {
     const decisions = imp.rows.filter((r) => r.verdict !== 'DUP_EXACT')
       .map((r) => ({ index: r.index, include: imp.include[r.index] === true, categoryId: imp.cat[r.index] || (imp.include[r.index] ? r.suggestedCategoryId : undefined) || undefined }));
-    if (imp.calibration && imp.calibration.trustworthy) {
+    if (imp.calibration && imp.calibration.trustworthy && !imp.calibration.isInvoice) {
       const inst = (imp.resolution && imp.resolution.identity.institution) || (accountById(S, imp.accountId) || {}).institution || 'OUTRO';
       saveLayoutProfile(S, inst, imp.calibration.strategy, imp.calibration.confidence);
     }
