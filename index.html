@@ -1893,7 +1893,7 @@ async function parseAnyFile(file) {
         const resolution = {
           identity: { institution: 'ITAU' },
           matches: cards.map((a) => ({ account: a, score: 100, reasons: [] })),
-          best: cards[0] || null,
+          best: cards[0] ? { account: cards[0], score: 100, reasons: [] } : null,
           confident: cards.length === 1,
           summary: cards.length
             ? `Fatura de cartão de crédito identificada${invoice.meta.totalFatura != null ? `, total de ${SFCore.formatBRL(invoice.meta.totalFatura)}` : ''}.`
