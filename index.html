@@ -704,7 +704,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
-const APP_VERSION = '2026.09.10-fatura2';  // muda a cada correção publicada
+const APP_VERSION = '2026.09.10-fatura3';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -1805,6 +1805,7 @@ const CARD_ENTRY_RE = new RegExp('(\\d{2}\\/\\d{2})[ \\t]+([^\\n]*?)(' + MONEY_L
 function extractCardEntries(pool) {
   const out = [];
   pool.forEach((line, i) => {
+    if (normNoSpace(line).includes('PAGAMENTOVIACONTA')) return; // linha da tabela de pagamentos: qualquer outra coisa nela é eco de posição
     let m;
     CARD_ENTRY_RE.lastIndex = 0;
     while ((m = CARD_ENTRY_RE.exec(line))) {
