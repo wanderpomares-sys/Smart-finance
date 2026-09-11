@@ -704,7 +704,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
-const APP_VERSION = '2026.09.10-fatura3';  // muda a cada correção publicada
+const APP_VERSION = '2026.09.10-fatura5';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -1707,7 +1707,7 @@ const persist = () => { if (S) saveState(S); };
 const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave(); } catch (e) { storageOk = false; } } };
 
 let tab = 'inicio';
-let imp = { step: 0, accountId: '', fileName: '', txs: [], statement: null, rows: [], include: {}, cat: {}, result: null, busy: false, error: '', calibration: null, lines: null, closingHint: '', resolution: null, identity: null, override: false };
+let imp = { step: 0, accountId: '', fileName: '', txs: [], statement: null, rows: [], include: {}, cat: {}, result: null, busy: false, error: '', calibration: null, lines: null, closingHint: '', resolution: null, identity: null, override: false, overrideText: '' };
 
 function setTab(t) { tab = t; render(); }
 
@@ -1796,7 +1796,7 @@ function dateAfterKeyword(flatText, keyword, maxGap = 15) {
     const idx = flatText.indexOf(keyword, from);
     if (idx < 0) return null;
     const window = flatText.slice(idx + keyword.length, idx + keyword.length + maxGap);
-    const m = window.match(/^(\d{2}\/\d{2}\/\d{4})/);
+    const m = window.match(/(\d{2}\/\d{2}\/\d{4})/);
     if (m) return SFCore.brDateToISO(m[1]);
     from = idx + keyword.length;
   }
@@ -1901,26 +1901,120 @@ function parseCardInvoiceLines(lines) {
   };
 }
 
+/* ───────── Leitor genérico de fatura (qualquer banco) ─────────
+   Não depende de frases específicas de um emissor: reconhece a ESTRUTURA
+   (linha com data + descrição + valor terminado em +/-) e valida contra
+   qualquer um dos jeitos comuns de imprimir o total da fatura. Usado quando
+   o leitor específico do Itaú não reconhece o arquivo. */
+function looksLikeAnyInvoice(lines) {
+  const head = normNoSpace(lines.slice(0, 60).join(' '));
+  return head.includes('FATURA') && (head.includes('CARTAO') || head.includes('VENCIMENTO'));
+}
+const GENERIC_TOTAL_KEYWORDS = [
+  'TOTALDESTAFATURA', 'SALDODESTAFATURA', 'SALDOAPAGAR', 'TOTALAPAGAR',
+  'VALORTOTALDAFATURA', 'DESPESASDEBITOSNOBRASIL', 'TOTALDAFATURA',
+];
+const GENERIC_ENTRY_RE = new RegExp(
+  '^(\\d{2}\\/\\d{2}(?:\\/\\d{2,4})?)\\s+([^\\n]*?)([+-]\\s?' + MONEY_LOOSE_SRC.replace('-?', '') + ')\\s*$',
+);
+function parseGenericInvoiceLines(lines) {
+  const full = lines.join('\n');
+  const fullFlat = normNoSpace(full);
+  let checkTotal = null;
+  for (const kw of GENERIC_TOTAL_KEYWORDS) {
+    checkTotal = moneyAfterKeyword(fullFlat, kw);
+    if (checkTotal != null) break;
+  }
+  const dueDate = dateAfterKeyword(fullFlat, 'VENCIMENTO:') || dateAfterKeyword(fullFlat, 'VENCIMENTO', 200);
+  if (!dueDate) return null; // nem a data de vencimento achou — não parece mesmo uma fatura
+
+  const rawEntries = [];
+  lines.forEach((line, i) => {
+    const m = line.trim().match(GENERIC_ENTRY_RE);
+    if (!m) return;
+    const descNorm = normNoSpace(m[2]);
+    if (/PAGAMENTO|PAGTO|CREDITOEMCONTA/.test(descNorm)) return; // pagamento da fatura, não é despesa
+    const sign = m[3].trim().startsWith('-') ? -1 : 1;
+    const value = SFCore.parseMoney(m[3].replace(/[+\s]/g, ''));
+    rawEntries.push({ dateBr: m[1], descRaw: m[2].replace(/\s+/g, ' ').trim(), valueCents: sign * Math.abs(value), lineIndex: i });
+  });
+
+  // anula pares de valor exatamente oposto (compra + cancelamento na mesma fatura)
+  const groups = new Map();
+  rawEntries.forEach((e, idx) => {
+    const abs = Math.abs(e.valueCents);
+    if (!groups.has(abs)) groups.set(abs, []);
+    groups.get(abs).push({ idx, sign: Math.sign(e.valueCents) });
+  });
+  const netted = new Set();
+  let nettedTotal = 0, nettedPairs = 0;
+  for (const [abs, arr] of groups) {
+    const pos = arr.filter((x) => x.sign > 0), neg = arr.filter((x) => x.sign < 0);
+    const n = Math.min(pos.length, neg.length);
+    for (let i = 0; i < n; i++) { netted.add(pos[i].idx); netted.add(neg[i].idx); nettedTotal += abs; nettedPairs++; }
+  }
+  const survivors = rawEntries.filter((e, idx) => !netted.has(idx) && e.descRaw);
+  if (!survivors.length) return null; // não achou nenhum lançamento reconhecível
+
+  // todo lançamento desta fatura cai no mesmo ciclo (perto do fechamento, ~7 dias antes
+  // do vencimento) — a data original impressa pode ser de semanas atrás e não deve
+  // criar uma fatura fantasma num mês passado.
+  const dueDateObj = new Date(dueDate + 'T00:00:00');
+  dueDateObj.setDate(dueDateObj.getDate() - 7);
+  const refDate = dueDateObj.toISOString().slice(0, 10);
+
+  const sum = survivors.reduce((a, e) => a + e.valueCents, 0);
+  const diagnostics = [];
+  let confidence;
+  if (checkTotal != null && sum === checkTotal) {
+    confidence = 1;
+    diagnostics.push(`Os lançamentos lidos somam ${SFCore.formatBRL(sum)}, batendo com o total desta fatura.`);
+  } else if (checkTotal != null) {
+    confidence = 0.4;
+    diagnostics.push(`Atenção: os lançamentos lidos somam ${SFCore.formatBRL(sum)}, mas a fatura informa ${SFCore.formatBRL(checkTotal)}. Confira os lançamentos antes de importar.`);
+  } else {
+    confidence = 0.3;
+    diagnostics.push('Não encontrei um total impresso para conferir a leitura. Confira os lançamentos antes de importar.');
+  }
+  if (nettedPairs > 0) {
+    diagnostics.push(`${nettedPairs} lançamento(s) e seu(s) cancelamento(s) na mesma fatura (total de ${SFCore.formatBRL(nettedTotal)}) se anularam e não entram na importação.`);
+  }
+  diagnostics.push('Leitura genérica (formato de fatura ainda não catalogado) — revise com atenção antes de confirmar.');
+
+  const txs = survivors.map((e) => SFCore.toCanonical(refDate, -e.valueCents, e.descRaw));
+
+  return {
+    txs, dailyBalances: [],
+    meta: { hasBalances: false, totalFatura: checkTotal, dueDate },
+    calibration: { trustworthy: confidence >= 0.99, confidence, diagnostics, strategy: null, isInvoice: true },
+  };
+}
+
 async function parseAnyFile(file) {
   const name = file.name.toLowerCase();
   if (name.endsWith('.pdf')) {
     const lines = await pdfToLines(await file.arrayBuffer());
+    const buildInvoiceResult = (invoice, institutionGuess) => {
+      const cards = S.accounts.filter(isCard);
+      const resolution = {
+        identity: institutionGuess ? { institution: institutionGuess } : {},
+        matches: cards.map((a) => ({ account: a, score: 100, reasons: [] })),
+        best: cards[0] ? { account: cards[0], score: 100, reasons: [] } : null,
+        confident: cards.length === 1,
+        summary: cards.length
+          ? `Fatura de cartão de crédito identificada${invoice.meta.totalFatura != null ? `, total de ${SFCore.formatBRL(invoice.meta.totalFatura)}` : ''}.`
+          : 'Fatura de cartão identificada, mas nenhum cartão está cadastrado. Cadastre em Mais → Contas.',
+      };
+      return { txs: invoice.txs, dailyBalances: invoice.dailyBalances, meta: invoice.meta,
+                lines, calibration: invoice.calibration, resolution };
+    };
     if (looksLikeCardInvoice(lines)) {
       const invoice = parseCardInvoiceLines(lines);
-      if (invoice && invoice.txs.length) {
-        const cards = S.accounts.filter(isCard);
-        const resolution = {
-          identity: { institution: 'ITAU' },
-          matches: cards.map((a) => ({ account: a, score: 100, reasons: [] })),
-          best: cards[0] ? { account: cards[0], score: 100, reasons: [] } : null,
-          confident: cards.length === 1,
-          summary: cards.length
-            ? `Fatura de cartão de crédito identificada${invoice.meta.totalFatura != null ? `, total de ${SFCore.formatBRL(invoice.meta.totalFatura)}` : ''}.`
-            : 'Fatura de cartão identificada, mas nenhum cartão está cadastrado. Cadastre em Mais → Contas.',
-        };
-        return { txs: invoice.txs, dailyBalances: invoice.dailyBalances, meta: invoice.meta,
-                  lines, calibration: invoice.calibration, resolution };
-      }
+      if (invoice && invoice.txs.length) return buildInvoiceResult(invoice, 'ITAU');
+    }
+    if (looksLikeAnyInvoice(lines)) {
+      const invoice = parseGenericInvoiceLines(lines);
+      if (invoice && invoice.txs.length) return buildInvoiceResult(invoice, null);
     }
     const resolution = resolveStatementAccount(S, lines);
     const read = readStatement(S, resolution.identity.institution || 'OUTRO', lines);
@@ -2556,15 +2650,19 @@ function viewConfirmacao() {
   <div class="card">
     <h3>Gravar nesta conta</h3>
     ${res && res.summary ? `<div class="sub">${esc(res.summary)}</div>` : ''}
-    <select onchange="imp.accountId=this.value;imp.override=false;render()">
+    <select onchange="imp.accountId=this.value;imp.override=false;imp.overrideText='';render()">
       <option value="">— escolha a conta —</option>
       ${S.accounts.map((a) => `<option value="${a.id}" ${imp.accountId === a.id ? 'selected' : ''}>${esc(a.name)} — ${esc(personName(S, a.ownerId))}</option>`).join('')}
     </select>
     ${check ? check.reasons.map((r) => `<div class="sub diag ${conflito ? 'neg' : ''}">· ${esc(r)}</div>`).join('') : ''}
     ${conflito ? `<div class="banner warn">
       <b>Não vou gravar assim.</b> Importar o extrato de um banco na conta de outro faz o app mostrar um saldo que confere consigo mesmo, mas com o dinheiro errado — e a conferência com o banco não pega esse erro.
-      ${res && res.best && res.best.account.id !== imp.accountId ? `<div class="btns"><button class="primary sm" onclick="imp.accountId='${res.best.account.id}';imp.override=false;render()">Usar "${esc(res.best.account.name)}"</button></div>` : ''}
-      <label class="check"><input type="checkbox" ${imp.override ? 'checked' : ''} onchange="imp.override=this.checked;render()"> Sei o que estou fazendo, importar mesmo assim</label>
+      ${res && res.best && res.best.account.id !== imp.accountId ? `<div class="btns"><button class="primary sm" onclick="imp.accountId='${res.best.account.id}';imp.override=false;imp.overrideText='';render()">Usar "${esc(res.best.account.name)}"</button></div>` : ''}
+      ${(() => { const chosen = accountById(S, imp.accountId); const chosenName = chosen ? chosen.name : ''; const ok = imp.overrideText.trim().toLowerCase() === chosenName.trim().toLowerCase(); imp.override = ok; return `
+      <div class="sub">Pra confirmar mesmo assim, digite exatamente o nome da conta escolhida acima: <b>${esc(chosenName)}</b></div>
+      <input placeholder="Digite o nome da conta" value="${esc(imp.overrideText)}" oninput="imp.overrideText=this.value;render()">
+      ${imp.overrideText && !ok ? `<div class="sub diag neg">· Não bateu com "${esc(chosenName)}" — confira e digite de novo.</div>` : ''}
+      `; })()}
     </div>` : ''}
     ${!S.accounts.length ? '<div class="empty">Nenhuma conta cadastrada. Cadastre em Mais → Contas.</div>' : ''}
   </div>
@@ -4091,7 +4189,7 @@ function impCommit() {
   } catch (e) { imp.error = e.message; }
   render();
 }
-function impReset() { imp = { step: 0, accountId: '', fileName: '', txs: [], statement: null, rows: [], include: {}, cat: {}, result: null, busy: false, error: '', calibration: null, lines: null, closingHint: '', resolution: null, identity: null, override: false }; render(); }
+function impReset() { imp = { step: 0, accountId: '', fileName: '', txs: [], statement: null, rows: [], include: {}, cat: {}, result: null, busy: false, error: '', calibration: null, lines: null, closingHint: '', resolution: null, identity: null, override: false, overrideText: '' }; render(); }
 function exportBackup() {
   requireAuth('Exportar todos os seus dados em um arquivo de backup.', async () => {
     const pwd = prompt('Senha para proteger o arquivo de backup (você precisará dela para restaurar):');
