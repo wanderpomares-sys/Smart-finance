@@ -704,7 +704,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
-const APP_VERSION = '2026.09.10-fatura5';  // muda a cada correção publicada
+const APP_VERSION = '2026.09.11-termos';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -2244,13 +2244,39 @@ let lastActivity = Date.now(), lockTimer = null;
 let pendingAuth = null;        // { reason, onOk }
 
 const hasVault = () => SFSec.hasVault();
+const TERMS_KEY = 'sf-terms-v1';
+const hasAcceptedTerms = () => localStorage.getItem(TERMS_KEY) === '1';
 
 function bootScreen() {
   document.body.classList.add('locked');
-  $('#view').innerHTML = hasVault() ? viewLock() : viewSetup();
+  $('#view').innerHTML = !hasAcceptedTerms() ? viewTerms() : (hasVault() ? viewLock() : viewSetup());
 }
 
-/* ── primeira configuração ── */
+/* ── aceite de privacidade e termos (primeiro uso) ── */
+function viewTermsContent() {
+  return `<h3>Privacidade</h3>
+    <p class="sub">Seus dados financeiros (saldos, extratos, investimentos) ficam <b>só neste aparelho</b>, criptografados. Não existe servidor: nada é enviado, e ninguém — nem quem desenvolveu o app — tem acesso ou pode recuperar o que você cadastrar. Se você perder o aparelho ou os dados locais sem um backup próprio, eles não podem ser recuperados por ninguém.</p>
+
+    <h3>Termos de uso</h3>
+    <p class="sub">O app é fornecido "como está", sem garantia de resultado. Fazer backup dos seus dados (arquivo de exportação) é responsabilidade sua. Decisões financeiras tomadas com base no app são de sua responsabilidade.</p>
+
+    <h3>Sobre o Consultor</h3>
+    <p class="sub">As sugestões da seção Consultor são <b>cálculos automáticos</b> feitos a partir dos dados que você mesmo cadastrou — não são recomendação de investimento nem consultoria financeira regulamentada (o app não é registrado como Consultor de Investimentos na CVM). Para decisões de investimento, considere consultar um profissional habilitado.</p>`;
+}
+function viewTerms() {
+  return `<div class="card lockcard">
+    <h2>Antes de começar</h2>
+    <p class="sub">Leia com atenção — isso explica como seus dados são tratados e os limites do que o app faz.</p>
+    ${viewTermsContent()}
+    <label class="check"><input type="checkbox" id="terms-ack" onchange="document.getElementById('terms-btn').disabled=!this.checked"> Li e concordo com a Política de Privacidade e os Termos de Uso acima</label>
+    <button id="terms-btn" class="primary big" disabled onclick="acceptTerms()">Continuar</button>
+  </div>`;
+}
+function acceptTerms() {
+  localStorage.setItem(TERMS_KEY, '1');
+  bootScreen();
+}
+
 function viewSetup() {
   const legacy = SFSec.legacyState();
   if (setupStep === 0) return `<div class="card lockcard">
@@ -2536,6 +2562,12 @@ function viewSeguranca() {
   <div class="card">
     <h3>Perfis da família</h3>
     <div class="hint">Hoje o cofre é um só, protegido pela sua senha: quem não a tem não abre nada. Perfis separados por pessoa, com permissões diferentes para cada membro, exigem um servidor para guardar os dados compartilhados — está previsto na Fase 4 do projeto.</div>
+  </div>
+
+  <div class="card">
+    <h3>Privacidade e termos</h3>
+    <button class="ghost sm" onclick="toggle('terms-review')">Ver Política de Privacidade e Termos de Uso</button>
+    <div id="terms-review" class="hidden">${viewTermsContent()}</div>
   </div>`;
 }
 const fmtDateTime = (iso) => {
