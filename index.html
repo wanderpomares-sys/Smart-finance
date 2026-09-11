@@ -704,7 +704,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
-const APP_VERSION = '2026.09.10-fatura';  // muda a cada correção publicada
+const APP_VERSION = '2026.09.10-fatura2';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -1789,14 +1789,28 @@ function moneyAfterKeyword(flatText, keyword, maxGap = 25) {
     from = idx + keyword.length; // essa ocorrência era só texto corrido; tenta a próxima
   }
 }
-const CARD_ENTRY_RE = new RegExp('(\\d{2}\\/\\d{2})\\s+([\\s\\S]*?)(' + MONEY_LOOSE_SRC + ')(?=\\s|$)', 'g');
-function extractCardEntries(text) {
-  const out = [];
-  let m;
-  CARD_ENTRY_RE.lastIndex = 0;
-  while ((m = CARD_ENTRY_RE.exec(text))) {
-    out.push({ dateBr: m[1], descRaw: m[2].replace(/\s+/g, ' ').trim(), valueCents: parseLooseMoney(m[3]) });
+/** Como moneyAfterKeyword, mas para uma data dd/mm/aaaa logo após a palavra-chave. */
+function dateAfterKeyword(flatText, keyword, maxGap = 15) {
+  let from = 0;
+  while (true) {
+    const idx = flatText.indexOf(keyword, from);
+    if (idx < 0) return null;
+    const window = flatText.slice(idx + keyword.length, idx + keyword.length + maxGap);
+    const m = window.match(/^(\d{2}\/\d{2}\/\d{4})/);
+    if (m) return SFCore.brDateToISO(m[1]);
+    from = idx + keyword.length;
   }
+}
+const CARD_ENTRY_RE = new RegExp('(\\d{2}\\/\\d{2})[ \\t]+([^\\n]*?)(' + MONEY_LOOSE_SRC + ')(?=\\s|$)', 'g');
+function extractCardEntries(pool) {
+  const out = [];
+  pool.forEach((line, i) => {
+    let m;
+    CARD_ENTRY_RE.lastIndex = 0;
+    while ((m = CARD_ENTRY_RE.exec(line))) {
+      out.push({ dateBr: m[1], descRaw: m[2].replace(/\s+/g, ' ').trim(), valueCents: parseLooseMoney(m[3]), lineIndex: i });
+    }
+  });
   return out;
 }
 /** Ano provável de uma data dd/mm da fatura, a partir do vencimento (mesmo ciclo). */
@@ -1810,23 +1824,25 @@ function parseCardInvoiceLines(lines) {
   const full = lines.join('\n');
   const fullFlat = normNoSpace(full);
   const totalFatura = moneyAfterKeyword(fullFlat, 'TOTALDESTAFATURA');
-  const dueMatch = full.match(/VENCIMENTO:\s*(\d{2}\/\d{2}\/\d{4})/i);
-  const dueDate = dueMatch ? SFCore.brDateToISO(dueMatch[1]) : null;
-  const nextClosingMatch = full.match(/PR[ÓO]X\.?\s*FECHAMENTO:\s*(\d{2}\/\d{2}\/\d{4})/i);
-  const nextClosingDate = nextClosingMatch ? SFCore.brDateToISO(nextClosingMatch[1]) : null;
+  const totalLancamentosAtuais = moneyAfterKeyword(fullFlat, 'TOTALDOSLANCAMENTOSATUAIS')
+    ?? moneyAfterKeyword(fullFlat, 'LANCAMENTOSNOCARTAO');
+  const dueDate = dateAfterKeyword(fullFlat, 'VENCIMENTO:');
+  const nextClosingDate = dateAfterKeyword(fullFlat, 'FECHAMENTO:');
+  const closingDate = dateAfterKeyword(fullFlat, 'EMISSAO:');
   const proximaFaturaTotal = moneyAfterKeyword(fullFlat, 'PROXIMAFATURA');
   const demaisFaturasTotal = moneyAfterKeyword(fullFlat, 'DEMAISFATURAS');
 
   const idxAtuais = findMarkerLine(lines, 'COMPRASESAQUES');
   if (idxAtuais < 0 || !dueDate) return null; // não é o layout esperado
-  const idxLimites = findMarkerLine(lines, 'LIMITESDECREDITO', idxAtuais + 1);
+  const idxEncargos = findMarkerLine(lines, 'ENCARGOSCOBRADOSNESTAFATURA', idxAtuais + 1);
+  const poolEnd = idxEncargos >= 0 ? idxEncargos : lines.length;
 
-  const poolEnd = idxLimites >= 0 ? idxLimites : lines.length;
-  const entries = extractCardEntries(lines.slice(idxAtuais, poolEnd).join('\n'));
+  const allEntries = extractCardEntries(lines.slice(idxAtuais, poolEnd))
+    .filter((e) => !normNoSpace(e.descRaw).includes('PAGAMENTOVIACONTA'));
 
-  // 1) anula pares de valor exatamente oposto (compra + cancelamento na mesma fatura)
+  // anula pares de valor exatamente oposto (compra + cancelamento na mesma fatura)
   const groups = new Map();
-  entries.forEach((e, idx) => {
+  allEntries.forEach((e, idx) => {
     const abs = Math.abs(e.valueCents);
     if (!groups.has(abs)) groups.set(abs, []);
     groups.get(abs).push({ idx, sign: Math.sign(e.valueCents) });
@@ -1838,25 +1854,27 @@ function parseCardInvoiceLines(lines) {
     const n = Math.min(pos.length, neg.length);
     for (let i = 0; i < n; i++) { netted.add(pos[i].idx); netted.add(neg[i].idx); nettedTotal += abs; nettedPairs++; }
   }
-  const survivors = entries.filter((e, idx) => !netted.has(idx) && e.descRaw && e.valueCents !== 0);
+  const survivors = allEntries.filter((e, idx) => !netted.has(idx) && e.descRaw && e.valueCents !== 0);
 
-  // 2) dos sobreviventes, separa quem bate com o valor da "próxima fatura" (parcela futura já conhecida)
-  const currentEntries = [], futureEntries = [];
+  // dos sobreviventes, separa quem bate com o valor da "próxima fatura" (parcela futura já conhecida)
   const usedAsFuture = new Set();
   if (proximaFaturaTotal != null) {
-    survivors.forEach((e, idx) => { if (e.valueCents === proximaFaturaTotal) usedAsFuture.add(idx); });
+    const firstMatch = survivors.findIndex((e) => e.valueCents === proximaFaturaTotal);
+    if (firstMatch >= 0) usedAsFuture.add(firstMatch);
   }
+  const currentEntries = [], futureEntries = [];
   survivors.forEach((e, idx) => (usedAsFuture.has(idx) ? futureEntries : currentEntries).push(e));
 
   const sumCurrent = currentEntries.reduce((a, e) => a + e.valueCents, 0);
+  const checkTotal = totalLancamentosAtuais ?? totalFatura;
   const diagnostics = [];
   let confidence;
-  if (totalFatura != null && sumCurrent === totalFatura) {
+  if (checkTotal != null && sumCurrent === checkTotal) {
     confidence = 1;
-    diagnostics.push(`Os lançamentos lidos somam ${SFCore.formatBRL(sumCurrent)}, batendo com o total desta fatura.`);
-  } else if (totalFatura != null) {
+    diagnostics.push(`Os lançamentos lidos somam ${SFCore.formatBRL(sumCurrent)}, batendo com o total de lançamentos desta fatura.`);
+  } else if (checkTotal != null) {
     confidence = 0.4;
-    diagnostics.push(`Atenção: os lançamentos lidos somam ${SFCore.formatBRL(sumCurrent)}, mas a fatura informa total de ${SFCore.formatBRL(totalFatura)}. Confira os lançamentos antes de importar.`);
+    diagnostics.push(`Atenção: os lançamentos lidos somam ${SFCore.formatBRL(sumCurrent)}, mas a fatura informa ${SFCore.formatBRL(checkTotal)} em lançamentos atuais. Confira os lançamentos antes de importar.`);
   } else {
     confidence = 0.3;
     diagnostics.push('Não encontrei o total impresso da fatura para conferir a leitura. Confira os lançamentos antes de importar.');
@@ -1869,15 +1887,15 @@ function parseCardInvoiceLines(lines) {
   }
 
   const txsCurrent = currentEntries.map((e) => {
-    const iso = SFCore.brDateToISO(`${e.dateBr}/${inferInvoiceYear(e.dateBr, dueDate)}`);
-    return SFCore.toCanonical(iso || dueDate, -e.valueCents, e.descRaw);
+    const refDate = closingDate || SFCore.brDateToISO(`${e.dateBr}/${inferInvoiceYear(e.dateBr, dueDate)}`) || dueDate;
+    return SFCore.toCanonical(refDate, -e.valueCents, e.descRaw);
   });
   const txsFuture = futureEntries.map((e) => SFCore.toCanonical(nextClosingDate || dueDate, -e.valueCents, e.descRaw));
 
   return {
     txs: [...txsCurrent, ...txsFuture],
     dailyBalances: [],
-    meta: { hasBalances: false, totalFatura, dueDate, nextClosingDate, demaisFaturasTotal, proximaFaturaTotal },
+    meta: { hasBalances: false, totalFatura, totalLancamentosAtuais, dueDate, nextClosingDate, demaisFaturasTotal, proximaFaturaTotal },
     calibration: { trustworthy: confidence >= 0.99, confidence, diagnostics, strategy: null, isInvoice: true },
   };
 }
