@@ -704,7 +704,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
-const APP_VERSION = '2026.09.11-termos';  // muda a cada correção publicada
+const APP_VERSION = '2026.09.11-vincular';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -1602,6 +1602,50 @@ function removeDuplicateTx(s, txIds) {
 /** Registra o pagamento (total ou parcial) de uma fatura.
  *  Gera dois lançamentos vinculados: saída na conta e abatimento no cartão.
  *  Por serem vinculados, não entram no fluxo real — a despesa já foi a compra. */
+/** Lançamentos já existentes (de qualquer conta, exceto o próprio cartão) que parecem
+ * ser o pagamento desta fatura: débito não vinculado, valor batendo (com folga de R$0,05
+ * pra centavos de arredondamento) e data perto do vencimento. Usado pra evitar lançar o
+ * pagamento duas vezes quando ele já veio de um extrato importado. */
+function findPaymentCandidates(s, cardId, invoiceKey) {
+  const card = s.accounts.find((a) => a.id === cardId);
+  const inv = card && invoicesOf(s, card).find((i) => i.key === invoiceKey);
+  if (!inv) return [];
+  const target = inv.remaining;
+  const due = inv.dueDate;
+  const dayDiff = (d) => Math.abs(Math.round((Date.parse(d + 'T00:00:00Z') - Date.parse(due + 'T00:00:00Z')) / 86400000));
+  return s.txs.filter((t) => t.accountId !== cardId && !t.linkId && t.amount < 0
+    && Math.abs(Math.abs(t.amount) - target) <= 5
+    && dayDiff(t.date) <= 12)
+    .sort((a, b) => dayDiff(a.date) - dayDiff(b.date));
+}
+/** Vincula um lançamento JÁ EXISTENTE (ex.: débito automático vindo do extrato) como
+ * pagamento da fatura, em vez de lançar um pagamento novo — evita duplicar a despesa
+ * na conta de origem. Cria só o lado do cartão; o lançamento existente só ganha o vínculo. */
+function linkExistingAsCardPayment(s, txId, cardId, invoiceKey) {
+  const tx = s.txs.find((t) => t.id === txId);
+  const card = s.accounts.find((a) => a.id === cardId);
+  if (!tx || !card) throw new Error('Lançamento ou cartão não encontrado.');
+  if (tx.linkId) throw new Error('Esse lançamento já está vinculado a outra coisa.');
+  const inv = invoicesOf(s, card).find((i) => i.key === invoiceKey);
+  const label = inv ? `fatura ${SFCore.monthOf(inv.dueDate)}` : 'fatura';
+  const amountCents = Math.abs(tx.amount);
+  const link = { id: uid(), status: 'CONFIRMED', confidence: 100, kind: 'FATURA' };
+  s.links.push(link);
+  tx.linkId = link.id;
+  tx.txType = 'TRANSF_OUT';
+  s.txs.push({
+    id: uid(), accountId: cardId, date: tx.date, amount: amountCents,
+    descriptionRaw: `Pagamento recebido ${label}`, descriptionNorm: SFCore.normalizeDescription(`Pagamento recebido ${label}`),
+    txType: 'TRANSF_IN', counterpartyName: null, counterpartyDoc: null,
+    categoryId: null, linkId: link.id, batchId: null, hash: null, seqInDay: 0, invoiceKey,
+  });
+  if (inv && amountCents >= inv.remaining) {
+    card.paidInvoices = card.paidInvoices || [];
+    if (!card.paidInvoices.includes(invoiceKey)) card.paidInvoices.push(invoiceKey);
+  }
+  SFSec.logEvent(s, 'ACAO_CRITICA', null, `vinculou lançamento existente como pagamento de ${fmtBRL(amountCents)} da fatura ${card.name}`);
+  return { linkId: link.id };
+}
 function payInvoice(s, cardId, invoiceKey, amountCents, date, fromAccountId) {
   const card = s.accounts.find((a) => a.id === cardId);
   const from = s.accounts.find((a) => a.id === fromAccountId);
@@ -3977,6 +4021,7 @@ function categoriesCard() {
 /* ═══════════ Tela do cartão de crédito ═══════════ */
 let cardTab = null;           // cartão selecionado
 let cardPayForm = null;       // { cardId, invoiceKey, max }
+let linkPayPicker = null;     // { cardId, invoiceKey } — quando o seletor de "já paguei" está aberto
 let cardBuyOpen = false;      // formulário de compra manual
 
 const INVOICE_LABEL = { ABERTA: 'Fatura aberta', FUTURA: 'Fatura futura', FECHADA: 'Fechada — a pagar',
@@ -4001,7 +4046,7 @@ function viewCartoes() {
 
   return `
   ${cards.length > 1 ? `<div class="card"><div class="chips">${cards.map((c) =>
-    `<button class="chip clickable ${c.id === cardTab ? 'sel' : ''}" onclick="cardTab='${c.id}';cardPayForm=null;render()">${esc(c.name)}</button>`).join('')}</div></div>` : ''}
+    `<button class="chip clickable ${c.id === cardTab ? 'sel' : ''}" onclick="cardTab='${c.id}';cardPayForm=null;linkPayPicker=null;render()">${esc(c.name)}</button>`).join('')}</div></div>` : ''}
 
   ${alerts.map((a) => `<div class="${a.tone}">${a.text}</div>`).join('')}
 
@@ -4031,8 +4076,10 @@ function viewCartoes() {
     ${inv.paid > 0 ? `<div class="sub">Total ${fmtBRL(inv.total)} · já pago ${fmtBRL(inv.paid)}</div>` : ''}
     <div class="btns">
       <button class="primary sm" onclick="openCardPay('${card.id}','${inv.key}',${inv.remaining})">Pagar fatura</button>
+      <button class="ghost sm" onclick="openLinkPay('${card.id}','${inv.key}')">Já paguei — vincular lançamento</button>
     </div>
     ${cardPayForm && cardPayForm.invoiceKey === inv.key ? cardPayFormHtml(card, inv) : ''}
+    ${linkPayPicker && linkPayPicker.invoiceKey === inv.key ? linkPayPickerHtml(card, inv) : ''}
   </div>`).join('') : '<div class="card"><div class="empty">Nenhuma fatura fechada aguardando pagamento.</div></div>'}
 
   ${sum.committedAhead > 0 ? `
@@ -4082,7 +4129,35 @@ function cardAlerts(sum) {
 
 function openCardPay(cardId, invoiceKey, max) {
   cardPayForm = { cardId, invoiceKey, max };
+  linkPayPicker = null;
   render();
+}
+function openLinkPay(cardId, invoiceKey) {
+  linkPayPicker = { cardId, invoiceKey };
+  cardPayForm = null;
+  render();
+}
+function linkPayPickerHtml(card, inv) {
+  const candidates = findPaymentCandidates(S, card.id, inv.key);
+  return `<div class="form">
+    <div class="hint">Use isto quando o pagamento já apareceu num extrato importado (ex.: débito automático) — evita lançar o mesmo pagamento duas vezes.</div>
+    ${candidates.length ? candidates.map((t) => {
+      const acc = accountById(S, t.accountId);
+      return `<div class="row" style="padding:8px 0;border-bottom:1px solid #eee">
+        <div class="grow"><b>${esc(t.descriptionRaw)}</b><div class="sub">${fmtDate(t.date)} · ${esc(acc ? acc.name : '')}</div></div>
+        <div class="amt neg">${fmtBRL(t.amount)}</div>
+        <button class="primary sm" onclick="confirmLinkPay('${t.id}','${card.id}','${inv.key}')">Usar este</button>
+      </div>`;
+    }).join('') : '<div class="empty">Não achei nenhum lançamento parecido (valor próximo, sem vínculo, perto do vencimento). Se o pagamento já foi importado com outro valor ou data, procure ele no Extrato e use "Pagar fatura" normalmente.</div>'}
+    <div class="btns"><button class="ghost sm" onclick="linkPayPicker=null;render()">Cancelar</button></div>
+  </div>`;
+}
+function confirmLinkPay(txId, cardId, invoiceKey) {
+  if (!confirm('Vincular este lançamento como pagamento da fatura? Ele deixa de contar como despesa avulsa e passa a ser o pagamento do cartão.')) return;
+  try {
+    linkExistingAsCardPayment(S, txId, cardId, invoiceKey);
+    persistNow(); linkPayPicker = null; render();
+  } catch (e) { alert(e.message); }
 }
 function cardPayFormHtml(card, inv) {
   const contas = S.accounts.filter((a) => !isCard(a));
