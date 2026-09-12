@@ -704,7 +704,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
-const APP_VERSION = '2026.09.11-confirmar2x';  // muda a cada correção publicada
+const APP_VERSION = '2026.09.11-licenca';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -2612,7 +2612,46 @@ function viewSeguranca() {
     <h3>Privacidade e termos</h3>
     <button class="ghost sm" onclick="toggle('terms-review')">Ver Política de Privacidade e Termos de Uso</button>
     <div id="terms-review" class="hidden">${viewTermsContent()}</div>
+  </div>
+
+  <div class="card">
+    <h3>Licença</h3>
+    ${S.license ? `
+      <div class="hint">✅ Licença registrada — <b>${esc(S.license.nome)}</b>, plano ${esc(S.license.plano === 'VITALICIO' ? 'Família Vitalício' : 'Anual')}, comprada em ${fmtDate(S.license.data)}.</div>
+    ` : `
+      <div class="hint">Se você comprou o app e recebeu um arquivo <code>.sflicense</code> por e-mail, envie aqui pra registrar — é só um recibo guardado no seu cofre, não é preciso pra usar o app.</div>
+      <input type="file" accept=".sflicense" onchange="handleLicenseFile(this.files[0])">
+      <div id="license-status" style="margin-top:8px"></div>
+    `}
   </div>`;
+}
+const SF_LICENSE_PUBKEY = { key_ops: ['verify'], ext: true, kty: 'EC',
+  x: '3C5VqzEoZnKZHZeZRq1EVkLWbvK52_UR4005soEMW7k', y: 'E93fPL4b-Qs4DcNxES7h9yIKcJuc7k5Jj1TKgKu5ji0', crv: 'P-256' };
+function b64urlToBuf(s) {
+  const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4));
+  const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + pad;
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf;
+}
+async function handleLicenseFile(file) {
+  const statusEl = document.getElementById('license-status');
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const { payload, assinatura } = JSON.parse(text);
+    if (!payload || !assinatura) throw new Error('Arquivo de licença mal formado.');
+    const publicKey = await crypto.subtle.importKey('jwk', SF_LICENSE_PUBKEY, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['verify']);
+    const enc = new TextEncoder().encode(JSON.stringify(payload));
+    const ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, publicKey, b64urlToBuf(assinatura), enc);
+    if (!ok) { statusEl.innerHTML = '❌ Essa licença não bateu com a assinatura oficial — verifique o arquivo.'; return; }
+    S.license = payload;
+    persistNow();
+    render();
+  } catch (e) {
+    statusEl.innerHTML = '❌ Não consegui ler esse arquivo: ' + esc(e.message);
+  }
 }
 const fmtDateTime = (iso) => {
   const d = new Date(iso);
