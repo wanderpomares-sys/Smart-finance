@@ -704,7 +704,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
-const APP_VERSION = '2026.09.11-vincular';  // muda a cada correção publicada
+const APP_VERSION = '2026.09.11-saldohoje';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -831,7 +831,7 @@ const fmtBRL = (c) => (valuesHidden ? MASK : realBRL(c));
 const isValuesHidden = () => valuesHidden;
 function setValuesHidden(v) { valuesHidden = v; }
 const fmtDate = (iso) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
-const balance = (s, acc) => (acc.anchorBalance || 0) + s.txs.filter((t) => t.accountId === acc.id).reduce((sum, t) => sum + t.amount, 0);
+const balance = (s, acc) => (acc.anchorBalance || 0) + s.txs.filter((t) => t.accountId === acc.id && t.date <= today()).reduce((sum, t) => sum + t.amount, 0);
 const accTxs = (s, accountId) => s.txs.filter((t) => t.accountId === accountId)
   .map((t) => ({ id: t.id, date: t.date, amount: t.amount, descriptionRaw: t.descriptionRaw, descriptionNorm: t.descriptionNorm }));
 const openChecks = (s, accountId) => s.checks.filter((c) => c.accountId === accountId && c.status === 'DIVERGENT');
