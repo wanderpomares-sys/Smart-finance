@@ -704,7 +704,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
-const APP_VERSION = '2026.09.11-saldohoje';  // muda a cada correção publicada
+const APP_VERSION = '2026.09.11-confirmar2x';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -1751,7 +1751,7 @@ const persist = () => { if (S) saveState(S); };
 const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave(); } catch (e) { storageOk = false; } } };
 
 let tab = 'inicio';
-let imp = { step: 0, accountId: '', fileName: '', txs: [], statement: null, rows: [], include: {}, cat: {}, result: null, busy: false, error: '', calibration: null, lines: null, closingHint: '', resolution: null, identity: null, override: false, overrideText: '' };
+let imp = { step: 0, accountId: '', fileName: '', txs: [], statement: null, rows: [], include: {}, cat: {}, result: null, busy: false, error: '', calibration: null, lines: null, closingHint: '', resolution: null, identity: null, override: false, overrideStep: 0 };
 
 function setTab(t) { tab = t; render(); }
 
@@ -2726,19 +2726,26 @@ function viewConfirmacao() {
   <div class="card">
     <h3>Gravar nesta conta</h3>
     ${res && res.summary ? `<div class="sub">${esc(res.summary)}</div>` : ''}
-    <select onchange="imp.accountId=this.value;imp.override=false;imp.overrideText='';render()">
+    <select onchange="imp.accountId=this.value;imp.override=false;imp.overrideStep=0;render()">
       <option value="">— escolha a conta —</option>
       ${S.accounts.map((a) => `<option value="${a.id}" ${imp.accountId === a.id ? 'selected' : ''}>${esc(a.name)} — ${esc(personName(S, a.ownerId))}</option>`).join('')}
     </select>
     ${check ? check.reasons.map((r) => `<div class="sub diag ${conflito ? 'neg' : ''}">· ${esc(r)}</div>`).join('') : ''}
     ${conflito ? `<div class="banner warn">
       <b>Não vou gravar assim.</b> Importar o extrato de um banco na conta de outro faz o app mostrar um saldo que confere consigo mesmo, mas com o dinheiro errado — e a conferência com o banco não pega esse erro.
-      ${res && res.best && res.best.account.id !== imp.accountId ? `<div class="btns"><button class="primary sm" onclick="imp.accountId='${res.best.account.id}';imp.override=false;imp.overrideText='';render()">Usar "${esc(res.best.account.name)}"</button></div>` : ''}
-      ${(() => { const chosen = accountById(S, imp.accountId); const chosenName = chosen ? chosen.name : ''; const ok = imp.overrideText.trim().toLowerCase() === chosenName.trim().toLowerCase(); imp.override = ok; return `
-      <div class="sub">Pra confirmar mesmo assim, digite exatamente o nome da conta escolhida acima: <b>${esc(chosenName)}</b></div>
-      <input placeholder="Digite o nome da conta" value="${esc(imp.overrideText)}" oninput="imp.overrideText=this.value;render()">
-      ${imp.overrideText && !ok ? `<div class="sub diag neg">· Não bateu com "${esc(chosenName)}" — confira e digite de novo.</div>` : ''}
-      `; })()}
+      ${res && res.best && res.best.account.id !== imp.accountId ? `<div class="btns"><button class="primary sm" onclick="imp.accountId='${res.best.account.id}';imp.override=false;imp.overrideStep=0;render()">Usar "${esc(res.best.account.name)}"</button></div>` : ''}
+      ${(() => {
+        const chosen = accountById(S, imp.accountId); const chosenName = chosen ? chosen.name : '';
+        const fileInst = SFCore.institutionLabel((res && res.identity && res.identity.institution) || '');
+        if (imp.overrideStep >= 2) { imp.override = true; return '<div class="sub">Confirmado — vai importar mesmo com a divergência de banco.</div>'; }
+        imp.override = false;
+        if (imp.overrideStep === 1) {
+          return `<div class="sub">Tem certeza? Isso vai gravar um extrato ${esc(fileInst)} dentro de <b>${esc(chosenName)}</b>.</div>
+          <div class="btns"><button class="primary sm" onclick="imp.overrideStep=2;render()">Sim, confirmar mesmo assim</button>
+          <button class="ghost sm" onclick="imp.overrideStep=0;render()">Cancelar</button></div>`;
+        }
+        return `<div class="btns"><button class="ghost sm" onclick="imp.overrideStep=1;render()">Importar mesmo assim</button></div>`;
+      })()}
     </div>` : ''}
     ${!S.accounts.length ? '<div class="empty">Nenhuma conta cadastrada. Cadastre em Mais → Contas.</div>' : ''}
   </div>
@@ -4296,7 +4303,7 @@ function impCommit() {
   } catch (e) { imp.error = e.message; }
   render();
 }
-function impReset() { imp = { step: 0, accountId: '', fileName: '', txs: [], statement: null, rows: [], include: {}, cat: {}, result: null, busy: false, error: '', calibration: null, lines: null, closingHint: '', resolution: null, identity: null, override: false, overrideText: '' }; render(); }
+function impReset() { imp = { step: 0, accountId: '', fileName: '', txs: [], statement: null, rows: [], include: {}, cat: {}, result: null, busy: false, error: '', calibration: null, lines: null, closingHint: '', resolution: null, identity: null, override: false, overrideStep: 0 }; render(); }
 function exportBackup() {
   requireAuth('Exportar todos os seus dados em um arquivo de backup.', async () => {
     const pwd = prompt('Senha para proteger o arquivo de backup (você precisará dela para restaurar):');
