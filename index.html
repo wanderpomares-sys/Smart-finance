@@ -133,6 +133,19 @@ body.locked header { text-align:center; }
 .lockcard h2 { font-family:'Archivo',sans-serif; font-size:1.8rem; margin-bottom:16px; font-weight:700; }
 .lockcard p { margin-bottom:20px; font-size:1.2rem; line-height:1.5; }
 .lockcard .btns { justify-content:center; }
+.landing-hero { max-width:460px; margin:0 auto; padding:56px 22px 28px; text-align:center; min-height:100vh; box-sizing:border-box; display:flex; flex-direction:column; }
+.landing-hero h1 { font-family:'Archivo',sans-serif; font-size:2rem; font-weight:800; color:var(--ink); line-height:1.2; margin:0 0 18px; }
+.landing-hero .sub { font-size:1.08rem; line-height:1.55; color:var(--neutral); margin:0 0 32px; }
+.landing-cta { display:block; background:var(--pos); color:#fff; font-weight:700; font-size:1.15rem; text-decoration:none;
+  border-radius:14px; padding:18px 20px; margin:0 0 12px; box-shadow:0 6px 18px rgba(30,125,90,.28); }
+.landing-cta-secondary { background:none; border:none; color:var(--neutral); font-size:.95rem; font-weight:600;
+  text-decoration:underline; padding:8px; margin:0 0 32px; cursor:pointer; }
+.landing-icons { display:flex; justify-content:center; gap:14px; flex-wrap:wrap; font-size:.88rem; color:var(--ink);
+  font-weight:600; margin-bottom:auto; padding-bottom:40px; }
+.landing-icons span { background:#fff; border:1px solid #E3E7EC; border-radius:20px; padding:8px 14px; }
+.landing-footer { margin-top:24px; }
+.landing-footer button { background:none; border:none; color:var(--neutral); font-size:.85rem; text-decoration:underline; cursor:pointer; padding:6px; font-weight:500; }
+.landing-footer #landing-legal { text-align:left; margin-top:14px; background:#fff; border-radius:12px; padding:16px; }
 .reccode { font-family:ui-monospace,Menlo,monospace; font-size:1.05rem; letter-spacing:.06em; text-align:center;
   background:#F4F6F8; border:1px dashed var(--brass); border-radius:12px; padding:14px; margin:10px 0; word-break:break-all; }
 .modal { position:fixed; inset:0; background:rgba(20,38,61,.55); z-index:20; display:flex; align-items:center; padding:16px; }
@@ -704,7 +717,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
-const APP_VERSION = '2026.09.11-licenca';  // muda a cada correção publicada
+const APP_VERSION = '2026.09.13-onboarding';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -2284,6 +2297,7 @@ function markResolved(id) {
 let lockView = 'senha';        // senha | pin | recuperacao
 let lockMsg = '', lockBusy = false;
 let setupStep = 0, setupPwd = '', setupRecovery = '';
+let onboarding = null;   // { step: 'import'|'preview', parsed, fileName, error, busy } — fluxo novo: importa antes de criar senha
 let lastActivity = Date.now(), lockTimer = null;
 let pendingAuth = null;        // { reason, onOk }
 
@@ -2293,7 +2307,103 @@ const hasAcceptedTerms = () => localStorage.getItem(TERMS_KEY) === '1';
 
 function bootScreen() {
   document.body.classList.add('locked');
-  $('#view').innerHTML = !hasAcceptedTerms() ? viewTerms() : (hasVault() ? viewLock() : viewSetup());
+  if (onboarding) {
+    $('#view').innerHTML = onboarding.step === 'import' ? viewOnboardingImport()
+      : onboarding.step === 'preview' ? viewOnboardingPreview()
+      : viewSetup(); // step === 'password'
+    return;
+  }
+  if (!hasVault()) { $('#view').innerHTML = viewLanding(); return; }
+  $('#view').innerHTML = !hasAcceptedTerms() ? viewTerms() : viewLock();
+}
+
+/* ── landing de vendas (primeira dobra, antes de qualquer cadastro) ── */
+function viewLanding() {
+  return `<div class="landing-hero">
+    <h1>Suas finanças organizadas sem entregar sua senha do banco</h1>
+    <p class="sub">Importe PDF, OFX ou CSV do Itaú, Nubank, Santander... O app organiza, confere o saldo e acha duplicidades automaticamente. Tudo fica só no seu celular.</p>
+    <a class="landing-cta" href="#" onclick="startOnboarding(event)">Baixar na Play Store</a>
+    <button class="landing-cta-secondary" onclick="startOnboarding()">ou continuar aqui no navegador</button>
+    <div class="landing-icons"><span>🔒 100% local</span><span>🔐 Criptografado</span><span>🚫 Sem servidor</span></div>
+    <div class="landing-footer">
+      <button onclick="toggle('landing-legal')">Política de Privacidade e Termos de Uso</button>
+      <div id="landing-legal" class="hidden">${viewTermsContent()}</div>
+    </div>
+  </div>`;
+}
+
+/* ── onboarding: importa primeiro, cadastro só depois de ver o resultado ── */
+function startOnboarding(e) {
+  if (e) e.preventDefault();
+  onboarding = { step: 'import', parsed: null, fileName: '', error: '', busy: false };
+  render();
+}
+async function onboardingFile(file) {
+  if (!file) return;
+  onboarding.busy = true; onboarding.error = ''; render();
+  const prevS = S;
+  try {
+    S = { accounts: [], layoutProfiles: {} }; // parseAnyFile precisa de uma conta pra comparar; ainda não existe nenhuma
+    const parsed = await parseAnyFile(file);
+    if (!parsed.txs.length) throw new Error('Não encontrei nenhum lançamento reconhecível nesse arquivo.');
+    onboarding.parsed = parsed;
+    onboarding.fileName = file.name;
+    onboarding.step = 'preview';
+  } catch (e) {
+    onboarding.error = e.message;
+  }
+  S = prevS;
+  onboarding.busy = false; render();
+}
+function viewOnboardingImport() {
+  return `<div class="card lockcard">
+    <h2>Importe seu primeiro extrato</h2>
+    <p class="sub">PDF, CSV ou OFX do seu banco. A leitura acontece aqui no seu aparelho — nada é enviado a lugar nenhum.</p>
+    ${onboarding.error ? `<div class="error">${esc(onboarding.error)}</div>` : ''}
+    <input type="file" accept=".pdf,.csv,.ofx" ${onboarding.busy ? 'disabled' : ''} onchange="onboardingFile(this.files[0])">
+    ${onboarding.busy ? '<div class="hint">Lendo o arquivo…</div>' : ''}
+    <div class="btns"><button class="ghost sm" onclick="onboarding=null;render()">Voltar</button></div>
+  </div>`;
+}
+function viewOnboardingPreview() {
+  const p = onboarding.parsed;
+  const n = p.txs.length;
+  const cal = p.calibration;
+  const okMsg = cal && cal.trustworthy
+    ? 'saldo conferido — bate certinho com o banco.'
+    : 'confira os lançamentos com calma assim que entrar; alguns podem precisar de uma olhada.';
+  return `<div class="card lockcard">
+    <h2>🎉 ${n} lançamento${n === 1 ? '' : 's'} organizado${n === 1 ? '' : 's'}!</h2>
+    <p class="sub">${okMsg}</p>
+    <button class="primary big" onclick="onboarding.step='password';render()">Continuar e criar minha senha</button>
+    <div class="hint">Sua senha protege esses dados com criptografia forte — só você abre, ninguém mais.</div>
+  </div>`;
+}
+function applyOnboardingImport() {
+  try {
+    const p = onboarding.parsed;
+    const person = { id: uid(), name: 'Você' };
+    S.people.push(person);
+    const inst = (p.resolution && p.resolution.identity && p.resolution.identity.institution) || null;
+    const isCardFile = !!(p.calibration && p.calibration.isInvoice);
+    const acc = {
+      id: uid(), name: (inst ? SFCore.institutionLabel(inst) : null) || 'Minha conta',
+      institution: inst || 'OUTRO', type: isCardFile ? 'CARTAO' : 'CORRENTE', ownerId: person.id,
+      anchorBalance: isCardFile ? 0 : null, anchorDate: null, anchorBatchId: null,
+    };
+    if (isCardFile) {
+      const dueDay = p.meta && p.meta.dueDate ? Number(p.meta.dueDate.slice(8, 10)) : 10;
+      acc.closingDay = p.meta && p.meta.nextClosingDate ? Number(p.meta.nextClosingDate.slice(8, 10)) : Math.max(1, dueDay - 7);
+      acc.dueDay = dueDay; acc.creditLimit = null; acc.paymentAccountId = null;
+    }
+    S.accounts.push(acc);
+    const rows = previewImport(S, acc.id, p.txs);
+    const decisions = rows.map((r) => ({ index: r.index, include: true, categoryId: undefined }));
+    commitImport(S, acc.id, onboarding.fileName, p.txs, decisions, p);
+  } catch (e) {
+    console.error('Falha ao aplicar a importação do onboarding:', e);
+  }
+  onboarding = null;
 }
 
 /* ── aceite de privacidade e termos (primeiro uso) ── */
@@ -2329,8 +2439,11 @@ function viewSetup() {
     ${legacy ? `<div class="banner">Encontrei dados já salvos sem proteção neste navegador. Eles serão criptografados agora e a cópia desprotegida será apagada.</div>` : ''}
     <input type="password" id="su-p1" placeholder="Crie uma senha (mínimo 8 caracteres)">
     <input type="password" id="su-p2" placeholder="Repita a senha">
+    <button class="ghost sm" type="button" onclick="toggle('setup-legal')">Ver Política de Privacidade e Termos de Uso</button>
+    <div id="setup-legal" class="hidden" style="text-align:left;margin-top:10px">${viewTermsContent()}</div>
+    <label class="check"><input type="checkbox" id="su-terms-ack" onchange="document.getElementById('setup-btn').disabled=!this.checked"> Li e concordo com a Política de Privacidade e os Termos de Uso</label>
     ${lockMsg ? `<div class="error">${esc(lockMsg)}</div>` : ''}
-    <button class="primary big" onclick="doSetup()" ${lockBusy ? 'disabled' : ''}>${lockBusy ? 'Criando cofre…' : 'Criar senha'}</button>
+    <button id="setup-btn" class="primary big" disabled onclick="doSetup()">${lockBusy ? 'Criando cofre…' : 'Criar senha'}</button>
     <div class="hint">A senha não é enviada a lugar nenhum e não pode ser recuperada por mim nem por ninguém. Se esquecê-la, só o código de recuperação (próximo passo) abre os dados.</div>
   </div>`;
   return `<div class="card lockcard">
@@ -2349,6 +2462,7 @@ async function doSetup() {
   const p1 = $('#su-p1').value, p2 = $('#su-p2').value;
   if (p1.length < 8) { lockMsg = 'A senha precisa de pelo menos 8 caracteres.'; render(); return; }
   if (p1 !== p2) { lockMsg = 'As duas senhas não são iguais.'; render(); return; }
+  if (!$('#su-terms-ack').checked) { lockMsg = 'Marque que você leu e concorda com a Política de Privacidade e os Termos de Uso.'; render(); return; }
   lockMsg = ''; lockBusy = true; render();
   try {
     const legacy = SFSec.legacyState();
@@ -2357,6 +2471,8 @@ async function doSetup() {
     setupRecovery = await SFSec.createVault(p1, initial);
     if (legacy) SFSec.dropLegacy();
     S = initial;
+    localStorage.setItem(TERMS_KEY, '1');
+    if (onboarding && onboarding.parsed) applyOnboardingImport();
     setupStep = 1;
   } catch (e) { lockMsg = e.message; }
   lockBusy = false; render();
@@ -2617,7 +2733,7 @@ function viewSeguranca() {
   <div class="card">
     <h3>Licença</h3>
     ${S.license ? `
-      <div class="hint">✅ Licença registrada — <b>${esc(S.license.nome)}</b>, plano ${esc(S.license.plano === 'VITALICIO' ? 'Família Vitalício' : 'Anual')}, comprada em ${fmtDate(S.license.data)}.</div>
+      <div class="hint">✅ Licença registrada — <b>${esc(S.license.nome)}</b>, plano ${esc(SF_PLANO_LABEL[S.license.plano] || S.license.plano)}, ${S.license.plano === 'CORTESIA' ? 'concedida' : 'comprada'} em ${fmtDate(S.license.data)}.${S.license.observacao ? ` <span class="sub">(${esc(S.license.observacao)})</span>` : ''}</div>
     ` : `
       <div class="hint">Se você comprou o app e recebeu um arquivo <code>.sflicense</code> por e-mail, envie aqui pra registrar — é só um recibo guardado no seu cofre, não é preciso pra usar o app.</div>
       <input type="file" accept=".sflicense" onchange="handleLicenseFile(this.files[0])">
@@ -2625,6 +2741,7 @@ function viewSeguranca() {
     `}
   </div>`;
 }
+const SF_PLANO_LABEL = { ANUAL: 'Anual', VITALICIO: 'Família Vitalício', CORTESIA: 'Cortesia (gratuito)' };
 const SF_LICENSE_PUBKEY = { key_ops: ['verify'], ext: true, kty: 'EC',
   x: '3C5VqzEoZnKZHZeZRq1EVkLWbvK52_UR4005soEMW7k', y: 'E93fPL4b-Qs4DcNxES7h9yIKcJuc7k5Jj1TKgKu5ji0', crv: 'P-256' };
 function b64urlToBuf(s) {
@@ -4390,6 +4507,9 @@ function syncEyeIcon() {
 }
 
 function render() {
+  // enquanto o código de recuperação ainda não foi confirmado, essa tela tem prioridade
+  // sobre o app normal — mesmo já com o cofre criado e desbloqueado.
+  if (setupStep > 0) { document.body.classList.add('locked'); $('#view').innerHTML = viewSetup(); return; }
   // nada sensível aparece antes da autenticação
   if (!S || !SFSec.isUnlocked()) { bootScreen(); return; }
   document.body.classList.remove('locked');
