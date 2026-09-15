@@ -717,7 +717,7 @@ const SEED_MARKET_OPTIONS = [
 ];
 
 let storageOk = true;
-const APP_VERSION = '2026.09.13-onboarding';  // muda a cada correção publicada
+const APP_VERSION = '2026.09.15-beta100';  // muda a cada correção publicada
 function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
@@ -2322,8 +2322,7 @@ function viewLanding() {
   return `<div class="landing-hero">
     <h1>Suas finanças organizadas sem entregar sua senha do banco</h1>
     <p class="sub">Importe PDF, OFX ou CSV do Itaú, Nubank, Santander... O app organiza, confere o saldo e acha duplicidades automaticamente. Tudo fica só no seu celular.</p>
-    <a class="landing-cta" href="#" onclick="startOnboarding(event)">Baixar na Play Store</a>
-    <button class="landing-cta-secondary" onclick="startOnboarding()">ou continuar aqui no navegador</button>
+    <a class="landing-cta" href="#" onclick="startOnboarding(event)">Testar Agora Grátis - Beta para 100 pessoas</a>
     <div class="landing-icons"><span>🔒 100% local</span><span>🔐 Criptografado</span><span>🚫 Sem servidor</span></div>
     <div class="landing-footer">
       <button onclick="toggle('landing-legal')">Política de Privacidade e Termos de Uso</button>
