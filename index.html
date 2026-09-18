@@ -320,6 +320,7 @@ const SFSec = (() => {
     knownRev = 0;
     writeVault(vault);
     await save(existingState);
+    try { SFTelemetry.trackOnce('app_install'); } catch (e) {}
     return recoveryCode;
   }
 
@@ -926,6 +927,7 @@ function rematch(s) {
 }
 
 function commitImport(s, accountId, fileName, canonTxs, decisions, statement) {
+  try { SFTelemetry.trackOnce('first_import'); } catch (e) {}
   const dByIndex = new Map(decisions.map((d) => [d.index, d]));
   const existing = s.txs.filter((t) => t.accountId === accountId)
     .map((t) => ({ id: t.id, date: t.date, amount: t.amount, descriptionNorm: t.descriptionNorm, hash: t.hash }));
@@ -3274,6 +3276,7 @@ function doAddGoal() {
   S.goals.push({ id: uid(), name, targetAmount: target,
     targetDate: SFCore.brDateToISO($('#gl-date').value.trim()) || null,
     accountId: $('#gl-acc').value || null });
+  try { SFTelemetry.track('goal_created'); } catch (e) {}
   goalForm = false; persist(); render();
 }
 function removeGoal(id) { S.goals = S.goals.filter((g) => g.id !== id); persist(); render(); }
@@ -4093,6 +4096,7 @@ function addPerson() {
   const name = $('#person-name').value.trim();
   if (!name) return;
   S.people.push({ id: uid(), name });
+  try { SFTelemetry.track('member_added'); } catch (e) {}
   persist(); render();
 }
 function askRemovePerson(personId) {
@@ -4553,12 +4557,83 @@ window.addEventListener('DOMContentLoaded', () => {
   ['click', 'keydown', 'touchstart', 'scroll'].forEach((ev) =>
     document.addEventListener(ev, touchActivity, { passive: true }));
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { flushPendingSave(); checkAutoLock(); }
+    if (document.hidden) { flushPendingSave(); checkAutoLock(); try { SFTelemetry.flush(); } catch (e) {} }
   });
   window.addEventListener('pagehide', flushPendingSave);
   window.addEventListener('beforeunload', flushPendingSave);
+  try { SFTelemetry.track('session_start'); SFTelemetry.flush(); } catch (e) {}
   bootScreen();
 });
+</script>
+<script>
+/* ============================================================
+   TELEMETRIA ANÔNIMA — Smart Finance Family
+   Nunca envia dado financeiro, nome, categoria ou descrição de
+   transação — só contadores de uso (instalação, ativação, etc).
+   ============================================================ */
+const SF_SUPABASE_URL = 'https://ibfghedgyxvyredykluq.supabase.co';
+const SF_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZmdoZWRneXh2eXJlZHlrbHVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3NjU2NjQsImV4cCI6MjEwNTM0MTY2NH0.Limb3hOXYNjHrBqZDMojQL77s7dqp49GOve3MbM_8tk';
+
+const SFTelemetry = (() => {
+  const DEVICE_KEY = 'sf-device-id';
+  const QUEUE_KEY = 'sf-events-queue';
+  const FLAGS_KEY = 'sf-telemetry-flags';
+
+  function getDeviceId() {
+    let id;
+    try { id = localStorage.getItem(DEVICE_KEY); } catch (e) { return null; }
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
+      try { localStorage.setItem(DEVICE_KEY, id); } catch (e) {}
+    }
+    return id;
+  }
+  function getFlags() {
+    try { return JSON.parse(localStorage.getItem(FLAGS_KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function setFlag(name) {
+    try { const f = getFlags(); f[name] = true; localStorage.setItem(FLAGS_KEY, JSON.stringify(f)); } catch (e) {}
+  }
+  function hasFlag(name) { return !!getFlags()[name]; }
+
+  function queue(event, extra) {
+    try {
+      const q = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+      q.push({ event, extra: extra || null, ts: Date.now() });
+      while (q.length > 200) q.shift();
+      localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+    } catch (e) {}
+  }
+
+  async function flush() {
+    try {
+      const q = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+      if (!q.length) return;
+      if (!SF_SUPABASE_URL.startsWith('http') || !SF_SUPABASE_ANON_KEY) return;
+      const deviceId = getDeviceId();
+      const rows = q.map((e) => ({
+        device: deviceId, event: e.event, extra: e.extra, created_at: new Date(e.ts).toISOString()
+      }));
+      const res = await fetch(`${SF_SUPABASE_URL}/rest/v1/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SF_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SF_SUPABASE_ANON_KEY}`,
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(rows),
+        keepalive: true
+      });
+      if (res.ok) localStorage.removeItem(QUEUE_KEY);
+    } catch (e) {}
+  }
+
+  function track(event, extra) { queue(event, extra); }
+  function trackOnce(event, extra) { if (hasFlag(event)) return; setFlag(event); queue(event, extra); }
+
+  return { track, trackOnce, flush, getDeviceId };
+})();
 </script>
 </body>
 </html>
