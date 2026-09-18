@@ -2373,6 +2373,10 @@ function skipOnboardingImport() {
   render();
 }
 function viewOnboardingPreview() {
+  if (!onboarding._previewTracked) {
+    onboarding._previewTracked = true;
+    try { SFTelemetry.track('import_preview_shown'); } catch (e) {}
+  }
   const p = onboarding.parsed;
   const n = p.txs.length;
   const cal = p.calibration;
