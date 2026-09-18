@@ -2364,7 +2364,13 @@ function viewOnboardingImport() {
     <input type="file" accept=".pdf,.csv,.ofx" ${onboarding.busy ? 'disabled' : ''} onchange="onboardingFile(this.files[0])">
     ${onboarding.busy ? '<div class="hint">Lendo o arquivo…</div>' : ''}
     <div class="btns"><button class="ghost sm" onclick="onboarding=null;render()">Voltar</button></div>
+    <button class="ghost sm" type="button" onclick="skipOnboardingImport()">Não tenho um extrato agora, quero só explorar</button>
   </div>`;
+}
+function skipOnboardingImport() {
+  try { SFTelemetry.track('onboarding_import_skipped'); } catch (e) {}
+  onboarding.step = 'password';
+  render();
 }
 function viewOnboardingPreview() {
   const p = onboarding.parsed;
