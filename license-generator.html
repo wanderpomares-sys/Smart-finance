@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gerador de Licenças — Smart Finance Family</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #0b1220; color: #e8edf5; margin: 0; padding: 24px; max-width: 480px; margin-left:auto; margin-right:auto; }
+  h1 { font-size: 1.3rem; }
+  .warn { background: #1a1006; border: 1px solid #6b4a12; border-radius: 12px; padding: 14px; font-size: 0.85rem; color: #c9a35a; margin-bottom: 20px; }
+  label { display:block; margin-top: 16px; font-size: 0.9rem; color: #96a2bd; }
+  input, select { width: 100%; box-sizing: border-box; padding: 10px; margin-top: 6px; border-radius: 8px; border: 1px solid #334; background: #0e1626; color: #e8edf5; font-size: 1rem; }
+  button { margin-top: 24px; width: 100%; padding: 14px; border-radius: 10px; border: none; background: #d4af37; color: #0b1220; font-weight: 700; font-size: 1.05rem; cursor: pointer; }
+  #resultado { margin-top: 20px; padding: 14px; border-radius: 10px; font-size: 0.9rem; display:none; }
+  #resultado.ok { background: #123822; color: #3ecf8e; display:block; }
+  #resultado.erro { background: #3a1414; color: #ff8080; display:block; }
+</style>
+</head>
+<body>
+
+<h1>Gerador de Licenças — Smart Finance Family</h1>
+<div class="warn">
+  Este arquivo contém a chave privada de assinatura. Mantenha ele só com você,
+  nunca publique em repositório público nem envie pra ninguém. Ele é o único
+  jeito de emitir uma licença válida daqui pra frente.
+</div>
+
+<label>Nome do cliente
+  <input id="nome" placeholder="Ex.: João Silva">
+</label>
+
+<label>Plano
+  <select id="plano">
+    <option value="ANUAL">Anual (expira em 12 meses)</option>
+    <option value="VITALICIO">Família Vitalício (nunca expira)</option>
+    <option value="CORTESIA">Cortesia — gratuito (nunca expira)</option>
+  </select>
+</label>
+
+<label>Data da licença (início da contagem, se Anual)
+  <input id="data" type="date">
+</label>
+
+<label>Observação (opcional)
+  <input id="observacao" placeholder="Ex.: promoção de lançamento">
+</label>
+
+<button onclick="gerar()">Gerar e baixar .sflicense</button>
+<div id="resultado"></div>
+
+<script>
+// Chave privada, gerada especificamente para o Smart Finance Family (P-256 / ECDSA).
+// Corresponde à chave pública embutida no index.html do app.
+const PRIVATE_KEY_JWK = {"key_ops":["sign"],"ext":true,"kty":"EC","x":"qdfUehsWMwd5OVo9k0zgF1GHgEVuoLChzlaDC8HuGCI","y":"RktXdDT4i7N4Iry8DmISwym5RS5E7xf6_86EyvhJ-1Q","crv":"P-256","d":"aQHR9oVQyMPGxT0fbgNY0V8mM-MHuAPTMjwNP-3ULSE"};
+
+function bufToB64url(buf) {
+  let bin = '';
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+document.getElementById('data').valueAsDate = new Date();
+
+async function gerar() {
+  const resultado = document.getElementById('resultado');
+  resultado.className = ''; resultado.style.display = 'none';
+
+  const nome = document.getElementById('nome').value.trim();
+  const plano = document.getElementById('plano').value;
+  const dataInput = document.getElementById('data').value;
+  const observacao = document.getElementById('observacao').value.trim();
+
+  if (!nome || !dataInput) {
+    resultado.className = 'erro';
+    resultado.textContent = 'Preencha ao menos o nome e a data.';
+    resultado.style.display = 'block';
+    return;
+  }
+
+  const payload = {
+    nome,
+    plano,
+    data: new Date(dataInput + 'T12:00:00').toISOString(),
+    observacao: observacao || undefined
+  };
+
+  try {
+    const privateKey = await crypto.subtle.importKey(
+      'jwk', PRIVATE_KEY_JWK, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']
+    );
+    const enc = new TextEncoder().encode(JSON.stringify(payload));
+    const sigBuf = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privateKey, enc);
+    const assinatura = bufToB64url(sigBuf);
+
+    const arquivo = { payload, assinatura };
+    const blob = new Blob([JSON.stringify(arquivo, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const nomeArquivo = nome.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    a.href = url;
+    a.download = `licenca-${nomeArquivo || 'cliente'}.sflicense`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    resultado.className = 'ok';
+    resultado.textContent = '✅ Licença gerada e baixada: licenca-' + (nomeArquivo || 'cliente') + '.sflicense — envie esse arquivo pro cliente.';
+    resultado.style.display = 'block';
+  } catch (e) {
+    resultado.className = 'erro';
+    resultado.textContent = '❌ Erro ao gerar: ' + e.message;
+    resultado.style.display = 'block';
+  }
+}
+</script>
+</body>
+</html>

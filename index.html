@@ -691,7 +691,7 @@ function seedOptions() {
   return SEED_MARKET_OPTIONS.map((o) => ({ id: uid(), ...o }));
 }
 function blankState() {
-  return { v: 1, people: [], accounts: [], categories: SEED_CATEGORIES, rules: SEED_RULES,
+  return { v: 1, createdAt: new Date().toISOString(), people: [], accounts: [], categories: SEED_CATEGORIES, rules: SEED_RULES,
            txs: [], links: [], rejected: [], batches: [], checks: [], excluded: [],
            investments: [], planned: [], goals: [], layoutProfiles: {}, market: DEFAULT_MARKET, marketOptions: seedOptions(),
            security: { events: [] } };
@@ -2764,6 +2764,30 @@ function isLicenseExpired() {
   const limite = inicio + SF_ANUAL_DIAS * 24 * 60 * 60 * 1000;
   return Date.now() > limite;
 }
+/* Só se aplica a contas criadas a partir desta versão (têm S.createdAt).
+   Contas antigas (sem esse campo, inclusive quem entrou pela promoção de
+   lançamento) ficam permanentemente isentas — não quebra a promessa já feita. */
+const SF_TRIAL_DIAS = 7;
+function isTrialExpiredNoLicense() {
+  if (!S || !S.createdAt || S.license) return false;
+  const inicio = new Date(S.createdAt).getTime();
+  if (Number.isNaN(inicio)) return false;
+  const limite = inicio + SF_TRIAL_DIAS * 24 * 60 * 60 * 1000;
+  return Date.now() > limite;
+}
+function viewTrialExpired() {
+  return `<div class="card lockcard">
+    <h2>Seu período de teste acabou</h2>
+    <p class="sub">Você testou o Smart Finance Family por ${SF_TRIAL_DIAS} dias. Seus dados continuam salvos e criptografados no seu celular — escolha um plano pra continuar usando.</p>
+    <div class="btns" style="display:flex; flex-direction:column; gap:10px">
+      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener">Plano Anual — R$ 97/ano</a>
+      <a class="landing-cta" href="https://pay.kiwify.com.br/Yd9l2b4" target="_blank" rel="noopener">Família Vitalício — R$ 197 único</a>
+    </div>
+    <div class="hint" style="margin-top:16px">Já comprou e recebeu um arquivo <code>.sflicense</code>? Envie aqui pra liberar:</div>
+    <input type="file" accept=".sflicense" onchange="handleLicenseFile(this.files[0])">
+    <div id="license-status" style="margin-top:8px"></div>
+  </div>`;
+}
 function viewLicenseExpired() {
   const venceuEm = new Date(new Date(S.license.data).getTime() + SF_ANUAL_DIAS * 24 * 60 * 60 * 1000);
   return `<div class="card lockcard">
@@ -2778,7 +2802,7 @@ function viewLicenseExpired() {
   </div>`;
 }
 const SF_LICENSE_PUBKEY = { key_ops: ['verify'], ext: true, kty: 'EC',
-  x: '3C5VqzEoZnKZHZeZRq1EVkLWbvK52_UR4005soEMW7k', y: 'E93fPL4b-Qs4DcNxES7h9yIKcJuc7k5Jj1TKgKu5ji0', crv: 'P-256' };
+  x: 'qdfUehsWMwd5OVo9k0zgF1GHgEVuoLChzlaDC8HuGCI', y: 'RktXdDT4i7N4Iry8DmISwym5RS5E7xf6_86EyvhJ-1Q', crv: 'P-256' };
 function b64urlToBuf(s) {
   const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4));
   const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + pad;
@@ -4550,6 +4574,7 @@ function render() {
   // nada sensível aparece antes da autenticação
   if (!S || !SFSec.isUnlocked()) { bootScreen(); return; }
   if (isLicenseExpired()) { document.body.classList.add('locked'); $('#view').innerHTML = viewLicenseExpired(); return; }
+  if (isTrialExpiredNoLicense()) { document.body.classList.add('locked'); $('#view').innerHTML = viewTrialExpired(); return; }
   document.body.classList.remove('locked');
   const views = { inicio: viewInicio, importar: viewImportar, extrato: viewExtrato, contas: viewContas,
                   auditoria: viewAuditoria, investir: viewInvestir, cartoes: viewCartoes, seguranca: viewSeguranca, consolidado: viewConsolidado, relatorios: viewRelatorios, calendario: viewCalendario, consultor: viewConsultor, mais: viewMais };
