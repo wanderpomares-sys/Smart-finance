@@ -19,6 +19,8 @@
 :root { --ink:#14263D; --brass:#B98A2F; --pos:#1E7D5A; --neg:#C0392B; --neutral:#5A6B7F; --bg:#F4F6F8; }
 * { box-sizing:border-box; margin:0; }
 body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:#1B2A3A; padding-bottom:76px; font-size:18px; }
+.avaliacao-banner { background:var(--brass); color:#14263D; font-weight:600; font-size:0.92rem; padding:9px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.avaliacao-banner a { color:#14263D; text-decoration:underline; font-weight:700; white-space:nowrap; }
 header { background:var(--ink); color:#fff; padding:14px 16px; position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between; }
 header h1 { font-family:'Archivo',sans-serif; font-size:1.3rem; letter-spacing:-0.01em; }
 header h1 span { color:var(--brass); }
@@ -2768,6 +2770,25 @@ function isLicenseExpired() {
    Contas antigas (sem esse campo, inclusive quem entrou pela promoção de
    lançamento) ficam permanentemente isentas — não quebra a promessa já feita. */
 const SF_TRIAL_DIAS = 7;
+function diasRestantesAvaliacao() {
+  if (!S || !S.createdAt || S.license) return null;
+  const inicio = new Date(S.createdAt).getTime();
+  if (Number.isNaN(inicio)) return null;
+  const limite = inicio + SF_TRIAL_DIAS * 24 * 60 * 60 * 1000;
+  const restam = Math.ceil((limite - Date.now()) / (24 * 60 * 60 * 1000));
+  return restam > 0 ? restam : 0;
+}
+function viewAvaliacaoBanner() {
+  const dias = diasRestantesAvaliacao();
+  if (dias === null) return '';
+  const texto = dias <= 0 ? 'Último dia do período de avaliação'
+    : dias === 1 ? 'Período de avaliação — falta 1 dia'
+    : `Período de avaliação — faltam ${dias} dias`;
+  return `<div class="avaliacao-banner">
+    <span>${texto}</span>
+    <a href="https://index-landing-vercel.vercel.app/" target="_blank" rel="noopener">Ver planos</a>
+  </div>`;
+}
 function isTrialExpiredNoLicense() {
   if (!S || !S.createdAt || S.license) return false;
   const inicio = new Date(S.createdAt).getTime();
@@ -2776,27 +2797,37 @@ function isTrialExpiredNoLicense() {
   return Date.now() > limite;
 }
 function viewTrialExpired() {
+  const codigo = getOrCreateDeviceId();
   return `<div class="card lockcard">
-    <h2>Seu período de teste acabou</h2>
-    <p class="sub">Você testou o Smart Finance Family por ${SF_TRIAL_DIAS} dias. Seus dados continuam salvos e criptografados no seu celular — escolha um plano pra continuar usando.</p>
+    <h2>Seu período de avaliação acabou</h2>
+    <p class="sub">Você avaliou o Smart Finance Family por ${SF_TRIAL_DIAS} dias. Seus dados continuam salvos e criptografados no seu celular — escolha um plano pra continuar usando.</p>
     <div class="btns" style="display:flex; flex-direction:column; gap:10px">
       <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener">Plano Anual — R$ 97/ano</a>
       <a class="landing-cta" href="https://pay.kiwify.com.br/Yd9l2b4" target="_blank" rel="noopener">Família Vitalício — R$ 197 único</a>
     </div>
-    <div class="hint" style="margin-top:16px">Já comprou e recebeu um arquivo <code>.sflicense</code>? Envie aqui pra liberar:</div>
+    <div class="hint" style="margin-top:16px">
+      Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber sua licença:
+      <div style="font-size:1.3rem; font-weight:700; letter-spacing:1px; margin-top:6px">${esc(codigo)}</div>
+    </div>
+    <div class="hint" style="margin-top:16px">Já recebeu o arquivo <code>.sflicense</code>? Envie aqui pra liberar:</div>
     <input type="file" accept=".sflicense" onchange="handleLicenseFile(this.files[0])">
     <div id="license-status" style="margin-top:8px"></div>
   </div>`;
 }
 function viewLicenseExpired() {
   const venceuEm = new Date(new Date(S.license.data).getTime() + SF_ANUAL_DIAS * 24 * 60 * 60 * 1000);
+  const codigo = getOrCreateDeviceId();
   return `<div class="card lockcard">
     <h2>Sua assinatura anual venceu</h2>
     <p class="sub">Seu plano Anual venceu em ${fmtDate(venceuEm.toISOString())}. Seus dados continuam salvos e criptografados no seu celular — renove pra continuar usando o app.</p>
     <div class="btns">
       <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener">Renovar plano Anual</a>
     </div>
-    <div class="hint" style="margin-top:16px">Já renovou e recebeu um novo arquivo <code>.sflicense</code>? Envie aqui pra atualizar:</div>
+    <div class="hint" style="margin-top:16px">
+      Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber a nova licença:
+      <div style="font-size:1.3rem; font-weight:700; letter-spacing:1px; margin-top:6px">${esc(codigo)}</div>
+    </div>
+    <div class="hint" style="margin-top:16px">Já recebeu um novo arquivo <code>.sflicense</code>? Envie aqui pra atualizar:</div>
     <input type="file" accept=".sflicense" onchange="handleLicenseFile(this.files[0])">
     <div id="license-status" style="margin-top:8px"></div>
   </div>`;
@@ -2811,6 +2842,20 @@ function b64urlToBuf(s) {
   for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
   return buf;
 }
+/* Código único do aparelho, gerado uma vez e guardado no próprio estado —
+   não depende de servidor. É isso que impede o arquivo de licença de
+   simplesmente ser copiado e reaproveitado noutro celular. */
+function getOrCreateDeviceId() {
+  if (!S) return null;
+  if (!S.deviceId) {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem O/0/I/1, evita confusão visual
+    let s = '';
+    for (let i = 0; i < 8; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
+    S.deviceId = s.slice(0, 4) + '-' + s.slice(4);
+    persist();
+  }
+  return S.deviceId;
+}
 async function handleLicenseFile(file) {
   const statusEl = document.getElementById('license-status');
   if (!file) return;
@@ -2822,6 +2867,11 @@ async function handleLicenseFile(file) {
     const enc = new TextEncoder().encode(JSON.stringify(payload));
     const ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, publicKey, b64urlToBuf(assinatura), enc);
     if (!ok) { statusEl.innerHTML = '❌ Essa licença não bateu com a assinatura oficial — verifique o arquivo.'; return; }
+    const meuCodigo = getOrCreateDeviceId();
+    if (payload.deviceId !== meuCodigo) {
+      statusEl.innerHTML = `❌ Essa licença não é deste aparelho (código deste aparelho: <b>${esc(meuCodigo)}</b>). Peça uma licença nova com esse código.`;
+      return;
+    }
     S.license = payload;
     persistNow();
     render();
@@ -4523,6 +4573,11 @@ function impCommit() {
 function impReset() { imp = { step: 0, accountId: '', fileName: '', txs: [], statement: null, rows: [], include: {}, cat: {}, result: null, busy: false, error: '', calibration: null, lines: null, closingHint: '', resolution: null, identity: null, override: false, overrideStep: 0 }; render(); }
 function exportBackup() {
   requireAuth('Exportar todos os seus dados em um arquivo de backup.', async () => {
+    const paraTransferencia = confirm(
+      'Esse backup é para levar sua conta pra OUTRO aparelho?\n\n' +
+      'OK = Sim, vou instalar/restaurar em outro aparelho agora (a licença deste aparelho será desativada depois de gerar o arquivo)\n\n' +
+      'Cancelar = Não, é só uma cópia de segurança (nada muda neste aparelho)'
+    );
     const pwd = prompt('Senha para proteger o arquivo de backup (você precisará dela para restaurar):');
     if (!pwd || pwd.length < 8) { alert('Use uma senha de pelo menos 8 caracteres.'); return; }
     const content = await SFSec.exportEncrypted(S, pwd);
@@ -4530,7 +4585,15 @@ function exportBackup() {
     a.href = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
     a.download = 'smart-finance-backup-' + new Date().toISOString().slice(0, 10) + '.sfbackup.json';
     a.click();
-    SFSec.logEvent(S, 'BACKUP_EXPORTADO', null, 'arquivo criptografado');
+    SFSec.logEvent(S, 'BACKUP_EXPORTADO', null, paraTransferencia ? 'transferência para outro aparelho' : 'cópia de segurança');
+    if (paraTransferencia) {
+      // Este aparelho perde a licença agora — o arquivo já foi gerado com ela dentro,
+      // então o aparelho novo (ou este mesmo, se restaurar de volta aqui) recupera o acesso.
+      S.license = null;
+      persistNow();
+      alert('Backup gerado.\n\nEste aparelho não tem mais licença ativa. Restaure esse arquivo no aparelho novo (Segurança > Restaurar backup) pra continuar usando por lá.');
+      render();
+    }
   });
 }
 function importBackup(file) {
@@ -4580,7 +4643,8 @@ function render() {
                   auditoria: viewAuditoria, investir: viewInvestir, cartoes: viewCartoes, seguranca: viewSeguranca, consolidado: viewConsolidado, relatorios: viewRelatorios, calendario: viewCalendario, consultor: viewConsultor, mais: viewMais };
   const health = SFSec.saveHealth();
   $('#view').innerHTML =
-    (storageOk ? '' : '<div class="error">Este navegador não permitiu salvar dados (modo de visualização?). Baixe o arquivo e abra direto no navegador do seu computador ou celular.</div>')
+    viewAvaliacaoBanner()
+    + (storageOk ? '' : '<div class="error">Este navegador não permitiu salvar dados (modo de visualização?). Baixe o arquivo e abra direto no navegador do seu computador ou celular.</div>')
     + (health.error ? `<div class="error"><b>Seus dados NÃO foram salvos.</b><br>${esc(health.error)}</div>` : '')
     + views[tab]() + viewAuthModal();
   document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
