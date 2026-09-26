@@ -2324,7 +2324,7 @@ function viewLanding() {
   return `<div class="landing-hero">
     <h1>Suas finanças organizadas sem entregar sua senha do banco</h1>
     <p class="sub">Importe PDF, OFX ou CSV do Itaú, Nubank, Santander... O app organiza, confere o saldo e acha duplicidades automaticamente. Tudo fica só no seu celular.</p>
-    <a class="landing-cta" href="#" onclick="startOnboarding(event)">Testar Agora Grátis - Beta para 100 pessoas</a>
+    <a class="landing-cta" href="#" onclick="startOnboarding(event)">Começar agora</a>
     <div class="landing-icons"><span>🔒 100% local</span><span>🔐 Criptografado</span><span>🚫 Sem servidor</span></div>
     <div class="landing-footer">
       <button onclick="toggle('landing-legal')">Política de Privacidade e Termos de Uso</button>
@@ -2753,6 +2753,30 @@ function viewSeguranca() {
   </div>`;
 }
 const SF_PLANO_LABEL = { ANUAL: 'Anual', VITALICIO: 'Família Vitalício', CORTESIA: 'Cortesia (gratuito)' };
+
+/* ── controle de vencimento: só o plano ANUAL expira, 12 meses após a data da licença ── */
+const SF_ANUAL_DIAS = 365;
+function isLicenseExpired() {
+  if (!S || !S.license) return false;
+  if (S.license.plano !== 'ANUAL') return false;
+  const inicio = new Date(S.license.data).getTime();
+  if (Number.isNaN(inicio)) return false;
+  const limite = inicio + SF_ANUAL_DIAS * 24 * 60 * 60 * 1000;
+  return Date.now() > limite;
+}
+function viewLicenseExpired() {
+  const venceuEm = new Date(new Date(S.license.data).getTime() + SF_ANUAL_DIAS * 24 * 60 * 60 * 1000);
+  return `<div class="card lockcard">
+    <h2>Sua assinatura anual venceu</h2>
+    <p class="sub">Seu plano Anual venceu em ${fmtDate(venceuEm.toISOString())}. Seus dados continuam salvos e criptografados no seu celular — renove pra continuar usando o app.</p>
+    <div class="btns">
+      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener">Renovar plano Anual</a>
+    </div>
+    <div class="hint" style="margin-top:16px">Já renovou e recebeu um novo arquivo <code>.sflicense</code>? Envie aqui pra atualizar:</div>
+    <input type="file" accept=".sflicense" onchange="handleLicenseFile(this.files[0])">
+    <div id="license-status" style="margin-top:8px"></div>
+  </div>`;
+}
 const SF_LICENSE_PUBKEY = { key_ops: ['verify'], ext: true, kty: 'EC',
   x: '3C5VqzEoZnKZHZeZRq1EVkLWbvK52_UR4005soEMW7k', y: 'E93fPL4b-Qs4DcNxES7h9yIKcJuc7k5Jj1TKgKu5ji0', crv: 'P-256' };
 function b64urlToBuf(s) {
@@ -4525,6 +4549,7 @@ function render() {
   if (setupStep > 0) { document.body.classList.add('locked'); $('#view').innerHTML = viewSetup(); return; }
   // nada sensível aparece antes da autenticação
   if (!S || !SFSec.isUnlocked()) { bootScreen(); return; }
+  if (isLicenseExpired()) { document.body.classList.add('locked'); $('#view').innerHTML = viewLicenseExpired(); return; }
   document.body.classList.remove('locked');
   const views = { inicio: viewInicio, importar: viewImportar, extrato: viewExtrato, contas: viewContas,
                   auditoria: viewAuditoria, investir: viewInvestir, cartoes: viewCartoes, seguranca: viewSeguranca, consolidado: viewConsolidado, relatorios: viewRelatorios, calendario: viewCalendario, consultor: viewConsultor, mais: viewMais };
