@@ -135,9 +135,9 @@ body.locked header { text-align:center; }
 .lockcard h2 { font-family:'Archivo',sans-serif; font-size:1.8rem; margin-bottom:16px; font-weight:700; }
 .lockcard p { margin-bottom:20px; font-size:1.2rem; line-height:1.5; }
 .lockcard .btns { justify-content:center; }
-.landing-hero { max-width:460px; margin:0 auto; padding:56px 22px 28px; text-align:center; min-height:100vh; box-sizing:border-box; display:flex; flex-direction:column; }
-.landing-hero h1 { font-family:'Archivo',sans-serif; font-size:2rem; font-weight:800; color:var(--ink); line-height:1.2; margin:0 0 18px; }
-.landing-hero .sub { font-size:1.08rem; line-height:1.55; color:var(--neutral); margin:0 0 32px; }
+.landing-hero { max-width:460px; margin:0 auto; padding:32px 22px 28px; text-align:center; min-height:100vh; box-sizing:border-box; display:flex; flex-direction:column; }
+.landing-hero h1 { font-family:'Archivo',sans-serif; font-size:1.7rem; font-weight:800; color:var(--ink); line-height:1.25; margin:0 0 14px; }
+.landing-hero .sub { font-size:1.05rem; line-height:1.5; color:var(--neutral); margin:0 0 22px; }
 .landing-cta { display:block; background:var(--pos); color:#fff; font-weight:700; font-size:1.15rem; text-decoration:none;
   border-radius:14px; padding:18px 20px; margin:0 0 12px; box-shadow:0 6px 18px rgba(30,125,90,.28); }
 .landing-cta-secondary { background:none; border:none; color:var(--neutral); font-size:.95rem; font-weight:600;
@@ -2324,8 +2324,8 @@ function bootScreen() {
 /* ── landing de vendas (primeira dobra, antes de qualquer cadastro) ── */
 function viewLanding() {
   return `<div class="landing-hero">
-    <h1>Suas finanças organizadas sem entregar sua senha do banco</h1>
-    <p class="sub">Importe PDF, OFX ou CSV do Itaú, Nubank, Santander... O app organiza, confere o saldo e acha duplicidades automaticamente. Tudo fica só no seu celular.</p>
+    <h1>Organize suas finanças sem entregar sua senha do banco</h1>
+    <p class="sub">Importe o extrato e o app organiza tudo — sem sair do seu celular.</p>
     <a class="landing-cta" href="#" onclick="startOnboarding(event)">Começar agora</a>
     <div class="landing-icons"><span>🔒 100% local</span><span>🔐 Criptografado</span><span>🚫 Sem servidor</span></div>
     <div class="landing-footer">
