@@ -21,6 +21,16 @@
 body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:#1B2A3A; padding-bottom:76px; font-size:18px; }
 .avaliacao-banner { background:var(--brass); color:#14263D; font-weight:600; font-size:0.92rem; padding:9px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 .avaliacao-banner a { color:#14263D; text-decoration:underline; font-weight:700; white-space:nowrap; }
+.guia { display:flex; gap:12px; align-items:flex-start; margin:0 0 16px; }
+.guia-avatar { flex:0 0 60px; width:60px; height:60px; border-radius:50%; overflow:hidden; background:var(--brass); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.5rem; border:2px solid #fff; box-shadow:0 2px 8px rgba(20,38,61,.2); }
+.guia-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+.guia-balao { position:relative; flex:1; background:#fff; border:1px solid #DDE3EA; border-radius:14px; padding:12px 14px; font-size:.98rem; line-height:1.45; box-shadow:0 2px 10px rgba(20,38,61,.06); }
+.guia-balao::before { content:''; position:absolute; left:-8px; top:20px; width:14px; height:14px; background:#fff; border-left:1px solid #DDE3EA; border-bottom:1px solid #DDE3EA; transform:rotate(45deg); }
+.guia-nome { font-weight:700; color:var(--ink); font-size:.82rem; margin-bottom:3px; }
+.guia-passos { list-style:none; padding:0; margin:10px 0 0; }
+.guia-passos li { display:flex; gap:8px; padding:4px 0; font-size:.92rem; }
+.guia-passos .ok { color:var(--pos); font-weight:700; }
+.guia-passos .pend { color:var(--neutral); }
 header { background:var(--ink); color:#fff; padding:14px 16px; position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between; }
 header h1 { font-family:'Archivo',sans-serif; font-size:1.3rem; letter-spacing:-0.01em; }
 header h1 span { color:var(--brass); }
@@ -2112,9 +2122,52 @@ function txRow(t) {
   </div>`;
 }
 
+/* ── Guia de primeiros passos: falas pré-escritas que acompanham o progresso ── */
+const SF_GUIA_NOME = 'Sofia';
+const SF_GUIA_IMG = 'data:image/jpeg;base64,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';   // ilustração da guia (se vazio, mostra círculo com a inicial)
+function guiaPassos() {
+  return [
+    { ok: S.people.length > 0, txt: 'Cadastrar quem vai usar (você e a família)' },
+    { ok: S.accounts.length > 0, txt: 'Cadastrar uma conta (ex.: conta corrente)' },
+    { ok: S.txs.length > 0, txt: 'Lançar um gasto ou importar um extrato' },
+  ];
+}
+function dispensarGuia() {
+  S.guiaOculta = true;
+  persist(); render();
+}
+function viewGuia(local) {
+  if (!S || S.guiaOculta) return '';
+  const passos = guiaPassos();
+  const atual = passos.findIndex((x) => !x.ok);
+  if (atual === -1) return '';   // tudo feito: a guia some sozinha
+  const msgs = [
+    `Oi! Eu sou a ${esc(SF_GUIA_NOME)}, sua guia aqui no app. Vou te ajudar a começar em 3 passos rápidos. Primeiro: cadastre quem vai usar — você e quem mais da família quiser acompanhar.`,
+    'Boa! Agora cadastre uma conta, por exemplo a sua conta corrente. Basta o nome e o banco.',
+    'Quase lá! Registre um gasto na aba Extrato ou importe o extrato do seu banco quando tiver em mãos.',
+  ];
+  const avatar = SF_GUIA_IMG ? `<img src="${SF_GUIA_IMG}" alt="">` : esc(SF_GUIA_NOME.charAt(0));
+  const irContas = atual < 2 && local !== 'contas';
+  const irExtrato = atual === 2;
+  return `<div class="guia">
+    <div class="guia-avatar">${avatar}</div>
+    <div class="guia-balao">
+      <div class="guia-nome">${esc(SF_GUIA_NOME)} · sua guia</div>
+      ${msgs[atual]}
+      <ul class="guia-passos">${passos.map((x, i) => `<li><span class="${x.ok ? 'ok' : 'pend'}">${x.ok ? '✓' : (i === atual ? '→' : '○')}</span><span>${x.txt}</span></li>`).join('')}</ul>
+      <div class="btns">
+        ${irContas ? `<button class="primary sm" onclick="setTab('contas')">Ir para Contas</button>` : ''}
+        ${irExtrato ? `<button class="primary sm" onclick="setTab('extrato')">Ir para Extrato</button>` : ''}
+        <button class="ghost sm" onclick="dispensarGuia()">Já sei usar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function viewInicio() {
   const d = dashboard(S);
   return `
+  ${viewGuia('inicio')}
   <div class="hero">
     <div class="hero-label">Patrimônio da família</div>
     <div class="hero-value">${fmtBRL(d.totals.netWorth)}</div>
@@ -2170,7 +2223,7 @@ function viewInicio() {
   </div>
   <div class="card">
     <h3>Últimos lançamentos</h3>
-    ${d.latest.map(txRow).join('') || '<div class="empty">Nenhum lançamento ainda — importe seu primeiro extrato.</div>'}
+    ${d.latest.map(txRow).join('') || '<div class="empty">Nenhum lançamento ainda — lance manualmente na aba Extrato ou importe um extrato.</div>'}
   </div>`;
 }
 
@@ -2387,16 +2440,22 @@ async function onboardingFile(file) {
 }
 function viewOnboardingImport() {
   return `<div class="card lockcard">
-    <h2>Importe seu primeiro extrato</h2>
-    <p class="sub">PDF, CSV ou OFX do seu banco. A leitura acontece aqui no seu aparelho — nada é enviado a lugar nenhum.</p>
+    <h2>Quer começar com um extrato?</h2>
+    <p class="sub">É opcional. Se você tiver o PDF, CSV ou OFX do seu banco, o app organiza tudo sozinho. A leitura acontece aqui no seu aparelho — nada é enviado a lugar nenhum.</p>
     ${onboarding.error ? `<div class="error">${esc(onboarding.error)}</div>` : ''}
     <input type="file" accept=".pdf,.csv,.ofx" ${onboarding.busy ? 'disabled' : ''} onchange="onboardingFile(this.files[0])">
     ${onboarding.busy ? '<div class="hint">Lendo o arquivo…</div>' : ''}
+    <details class="hint" style="margin:12px 0 0">
+      <summary style="cursor:pointer">Onde encontro meu extrato?</summary>
+      <p style="font-size:.95rem;margin:8px 0 0">No app ou no internet banking do seu banco, abra <b>Extrato</b> e procure <b>Compartilhar</b> ou <b>Exportar</b> (PDF, CSV ou OFX). O app lê esses três formatos.</p>
+    </details>
+    <div class="hint" style="text-align:center;margin:18px 0 0">ou</div>
+    <a class="landing-cta" href="#" style="margin-top:10px;text-align:center" onclick="skipOnboardingImport(event)">Começar sem extrato</a>
     <div class="btns"><button class="ghost sm" onclick="onboarding=null;render()">Voltar</button></div>
-    <button class="ghost sm" type="button" onclick="skipOnboardingImport()">Não tenho um extrato agora, quero só explorar</button>
   </div>`;
 }
-function skipOnboardingImport() {
+function skipOnboardingImport(ev) {
+  if (ev && ev.preventDefault) ev.preventDefault();
   try { SFTelemetry.track('onboarding_import_skipped'); } catch (e) {}
   onboarding.step = 'password';
   render();
@@ -4176,7 +4235,7 @@ function viewContas() {
       </div><button class="ghost sm" onclick="askResetAll()">⟲ Tudo</button></div>` : ''}
     ${!lastBatch && !S.txs.length ? '<div class="empty">Nada para desfazer ou reiniciar ainda.</div>' : ''}
   </div>`;
-  return `${sugHtml}${manageCard}
+  return `${viewGuia('contas')}${sugHtml}${manageCard}
   <div class="card">
     <h3>Contas <button class="primary sm right" onclick="toggle('form-acc')" ${!S.people.length ? 'disabled' : ''}>Nova conta</button></h3>
     <div id="form-acc" class="form hidden">
