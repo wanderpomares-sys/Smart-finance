@@ -2309,15 +2309,42 @@ const hasVault = () => SFSec.hasVault();
 const TERMS_KEY = 'sf-terms-v1';
 const hasAcceptedTerms = () => localStorage.getItem(TERMS_KEY) === '1';
 
+/* ── telemetria de telas: só o NOME da tela (nunca conteúdo, valores ou nomes digitados) ── */
+let _lastScreenTracked = null;
+function trackScreen(name) {
+  if (name === _lastScreenTracked) return;   // não repete enquanto a tela não mudar
+  _lastScreenTracked = name;
+  try { SFTelemetry.track('screen_view', { screen: name }); } catch (e) {}
+}
+function trackCheckout(plano) {
+  try { SFTelemetry.track('checkout_click', { plan: plano }); } catch (e) {}
+}
+/* Origem da visita e fuso do aparelho (sem IP, sem localização exata) */
+function sessionInfo() {
+  const info = {};
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.get('utm_source')) info.utm = String(q.get('utm_source')).slice(0, 40);
+    if (q.get('utm_campaign')) info.camp = String(q.get('utm_campaign')).slice(0, 40);
+    if (document.referrer) info.ref = new URL(document.referrer).hostname.slice(0, 60);
+  } catch (e) {}
+  try { info.tz = String(Intl.DateTimeFormat().resolvedOptions().timeZone || '').slice(0, 40); } catch (e) {}
+  try { info.lang = String(navigator.language || '').slice(0, 10); } catch (e) {}
+  return info;
+}
+
 function bootScreen() {
   document.body.classList.add('locked');
   if (onboarding) {
+    const tela = onboarding.step === 'import' ? 'onb_import' : onboarding.step === 'preview' ? 'onb_preview' : 'criar_senha';
+    trackScreen(tela);
     $('#view').innerHTML = onboarding.step === 'import' ? viewOnboardingImport()
       : onboarding.step === 'preview' ? viewOnboardingPreview()
       : viewSetup(); // step === 'password'
     return;
   }
-  if (!hasVault()) { $('#view').innerHTML = viewLanding(); return; }
+  if (!hasVault()) { trackScreen('landing'); $('#view').innerHTML = viewLanding(); return; }
+  trackScreen(!hasAcceptedTerms() ? 'termos' : 'desbloqueio');
   $('#view').innerHTML = !hasAcceptedTerms() ? viewTerms() : viewLock();
 }
 
@@ -2802,8 +2829,8 @@ function viewTrialExpired() {
     <h2>Seu período de avaliação acabou</h2>
     <p class="sub">Você avaliou o Smart Finance Family por ${SF_TRIAL_DIAS} dias. Seus dados continuam salvos e criptografados no seu celular — escolha um plano pra continuar usando.</p>
     <div class="btns" style="display:flex; flex-direction:column; gap:10px">
-      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener">Plano Anual — R$ 97/ano</a>
-      <a class="landing-cta" href="https://pay.kiwify.com.br/Yd9l2b4" target="_blank" rel="noopener">Família Vitalício — R$ 197 único</a>
+      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener" onclick="trackCheckout('ANUAL')">Plano Anual — R$ 97/ano</a>
+      <a class="landing-cta" href="https://pay.kiwify.com.br/Yd9l2b4" target="_blank" rel="noopener" onclick="trackCheckout('VITALICIO')">Família Vitalício — R$ 197 único</a>
     </div>
     <div class="hint" style="margin-top:16px">
       Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber sua licença:
@@ -2821,7 +2848,7 @@ function viewLicenseExpired() {
     <h2>Sua assinatura anual venceu</h2>
     <p class="sub">Seu plano Anual venceu em ${fmtDate(venceuEm.toISOString())}. Seus dados continuam salvos e criptografados no seu celular — renove pra continuar usando o app.</p>
     <div class="btns">
-      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener">Renovar plano Anual</a>
+      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener" onclick="trackCheckout('RENOVACAO_ANUAL')">Renovar plano Anual</a>
     </div>
     <div class="hint" style="margin-top:16px">
       Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber a nova licença:
@@ -4633,12 +4660,13 @@ function syncEyeIcon() {
 function render() {
   // enquanto o código de recuperação ainda não foi confirmado, essa tela tem prioridade
   // sobre o app normal — mesmo já com o cofre criado e desbloqueado.
-  if (setupStep > 0) { document.body.classList.add('locked'); $('#view').innerHTML = viewSetup(); return; }
+  if (setupStep > 0) { trackScreen('codigo_recuperacao'); document.body.classList.add('locked'); $('#view').innerHTML = viewSetup(); return; }
   // nada sensível aparece antes da autenticação
   if (!S || !SFSec.isUnlocked()) { bootScreen(); return; }
-  if (isLicenseExpired()) { document.body.classList.add('locked'); $('#view').innerHTML = viewLicenseExpired(); return; }
-  if (isTrialExpiredNoLicense()) { document.body.classList.add('locked'); $('#view').innerHTML = viewTrialExpired(); return; }
+  if (isLicenseExpired()) { trackScreen('paywall_anual'); document.body.classList.add('locked'); $('#view').innerHTML = viewLicenseExpired(); return; }
+  if (isTrialExpiredNoLicense()) { trackScreen('paywall_avaliacao'); document.body.classList.add('locked'); $('#view').innerHTML = viewTrialExpired(); return; }
   document.body.classList.remove('locked');
+  trackScreen('tab:' + tab);
   const views = { inicio: viewInicio, importar: viewImportar, extrato: viewExtrato, contas: viewContas,
                   auditoria: viewAuditoria, investir: viewInvestir, cartoes: viewCartoes, seguranca: viewSeguranca, consolidado: viewConsolidado, relatorios: viewRelatorios, calendario: viewCalendario, consultor: viewConsultor, mais: viewMais };
   const health = SFSec.saveHealth();
@@ -4685,7 +4713,7 @@ window.addEventListener('DOMContentLoaded', () => {
   });
   window.addEventListener('pagehide', flushPendingSave);
   window.addEventListener('beforeunload', flushPendingSave);
-  try { SFTelemetry.track('session_start'); SFTelemetry.flush(); } catch (e) {}
+  try { SFTelemetry.track('session_start', sessionInfo()); SFTelemetry.flush(); } catch (e) {}
   bootScreen();
 });
 </script>
