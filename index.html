@@ -1645,6 +1645,22 @@ function findPaymentCandidates(s, cardId, invoiceKey) {
     && dayDiff(t.date) <= 12)
     .sort((a, b) => dayDiff(a.date) - dayDiff(b.date));
 }
+/** Candidatos "soltos": qualquer débito ainda sem vínculo, de conta que não é cartão, perto do
+ *  vencimento. Serve quando o valor pago não bate com a fatura (pagamento parcial, Pix pra outra
+ *  pessoa pagar, valor maior). O usuário escolhe; nada é vinculado sozinho. */
+function findLoosePaymentCandidates(s, cardId, invoiceKey) {
+  const card = s.accounts.find((a) => a.id === cardId);
+  const inv = card && invoicesOf(s, card).find((i) => i.key === invoiceKey);
+  if (!inv) return [];
+  const strictIds = new Set(findPaymentCandidates(s, cardId, invoiceKey).map((t) => t.id));
+  const dayDiff = (d) => Math.abs(Math.round((Date.parse(d + 'T00:00:00Z') - Date.parse(inv.dueDate + 'T00:00:00Z')) / 86400000));
+  return s.txs.filter((t) => {
+    if (t.accountId === cardId || t.linkId || !(t.amount < 0) || strictIds.has(t.id)) return false;
+    const acc = s.accounts.find((a) => a.id === t.accountId);
+    return acc && !isCard(acc) && dayDiff(t.date) <= 45;
+  }).sort((a, b) => (Math.abs(Math.abs(a.amount) - inv.remaining) - Math.abs(Math.abs(b.amount) - inv.remaining)) || (dayDiff(a.date) - dayDiff(b.date)))
+    .slice(0, 8);
+}
 /** Vincula um lançamento JÁ EXISTENTE (ex.: débito automático vindo do extrato) como
  * pagamento da fatura, em vez de lançar um pagamento novo — evita duplicar a despesa
  * na conta de origem. Cria só o lado do cartão; o lançamento existente só ganha o vínculo. */
@@ -2834,11 +2850,20 @@ function viewSeguranca() {
     ${S.license ? `
       <div class="hint">✅ Licença registrada — <b>${esc(S.license.nome)}</b>, plano ${esc(SF_PLANO_LABEL[S.license.plano] || S.license.plano)}, ${S.license.plano === 'CORTESIA' ? 'concedida' : 'comprada'} em ${fmtDate(S.license.data)}.${S.license.observacao ? ` <span class="sub">(${esc(S.license.observacao)})</span>` : ''}</div>
     ` : `
-      <div class="hint">Se você comprou o app e recebeu um arquivo <code>.sflicense</code> por e-mail, envie aqui pra registrar — é só um recibo guardado no seu cofre, não é preciso pra usar o app.</div>
+      <div class="hint">${S.createdAt ? 'Se você comprou um plano e recebeu um arquivo <code>.sflicense</code>, envie aqui pra liberar o app.' : 'Sua conta é anterior aos planos pagos: pode continuar usando sem licença. Se tiver um arquivo <code>.sflicense</code>, pode registrá-lo aqui.'}</div>
       <input type="file" accept=".sflicense" onchange="handleLicenseFile(this.files[0])">
       <div id="license-status" style="margin-top:8px"></div>
     `}
+    <div class="hint" style="margin-top:14px">Código deste aparelho — é ele que você informa pra receber a licença:</div>
+    <div style="font-size:1.4rem;font-weight:700;letter-spacing:1px;margin:6px 0 10px">${esc(getOrCreateDeviceId())}</div>
+    <button class="ghost sm" onclick="copiarCodigoAparelho()">Copiar código</button>
   </div>`;
+}
+function copiarCodigoAparelho() {
+  const c = getOrCreateDeviceId();
+  const ok = () => alert('Código copiado: ' + c);
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(c).then(ok, () => prompt('Copie o código:', c));
+  else prompt('Copie o código:', c);
 }
 const SF_PLANO_LABEL = { ANUAL: 'Anual', VITALICIO: 'Família Vitalício', CORTESIA: 'Cortesia (gratuito)' };
 
@@ -4434,9 +4459,10 @@ function viewCartoes() {
       <div><span class="${INVOICE_TONE[inv.status]}">${INVOICE_LABEL[inv.status]}</span></div></div>
       <div class="amt neg">${fmtBRL(inv.remaining)}</div></div>
     ${inv.paid > 0 ? `<div class="sub">Total ${fmtBRL(inv.total)} · já pago ${fmtBRL(inv.paid)}</div>` : ''}
+    ${(() => { const c = findPaymentCandidates(S, card.id, inv.key)[0]; return c && !(linkPayPicker && linkPayPicker.invoiceKey === inv.key) ? `<div class="hint" style="border-left:3px solid var(--brass);padding-left:10px;margin:8px 0">Este débito parece ser o pagamento desta fatura: <b>${esc(c.descriptionRaw)}</b> · ${fmtBRL(c.amount)} em ${fmtDate(c.date)}.<div class="btns" style="margin-top:6px"><button class="primary sm" onclick="confirmLinkPay('${c.id}','${card.id}','${inv.key}')">Foi este — vincular</button></div></div>` : ''; })()}
     <div class="btns">
       <button class="primary sm" onclick="openCardPay('${card.id}','${inv.key}',${inv.remaining})">Pagar fatura</button>
-      <button class="ghost sm" onclick="openLinkPay('${card.id}','${inv.key}')">Já paguei — vincular lançamento</button>
+      <button class="ghost sm" onclick="openLinkPay('${card.id}','${inv.key}')">Já paguei — escolher o pagamento</button>
     </div>
     ${cardPayForm && cardPayForm.invoiceKey === inv.key ? cardPayFormHtml(card, inv) : ''}
     ${linkPayPicker && linkPayPicker.invoiceKey === inv.key ? linkPayPickerHtml(card, inv) : ''}
@@ -4498,22 +4524,35 @@ function openLinkPay(cardId, invoiceKey) {
   render();
 }
 function linkPayPickerHtml(card, inv) {
-  const candidates = findPaymentCandidates(S, card.id, inv.key);
-  return `<div class="form">
-    <div class="hint">Use isto quando o pagamento já apareceu num extrato importado (ex.: débito automático) — evita lançar o mesmo pagamento duas vezes.</div>
-    ${candidates.length ? candidates.map((t) => {
-      const acc = accountById(S, t.accountId);
-      return `<div class="row" style="padding:8px 0;border-bottom:1px solid #eee">
+  const strict = findPaymentCandidates(S, card.id, inv.key);
+  const loose = findLoosePaymentCandidates(S, card.id, inv.key);
+  const row = (t) => {
+    const acc = accountById(S, t.accountId);
+    return `<div class="row" style="padding:8px 0;border-bottom:1px solid #eee">
         <div class="grow"><b>${esc(t.descriptionRaw)}</b><div class="sub">${fmtDate(t.date)} · ${esc(acc ? acc.name : '')}</div></div>
         <div class="amt neg">${fmtBRL(t.amount)}</div>
         <button class="primary sm" onclick="confirmLinkPay('${t.id}','${card.id}','${inv.key}')">Usar este</button>
       </div>`;
-    }).join('') : '<div class="empty">Não achei nenhum lançamento parecido (valor próximo, sem vínculo, perto do vencimento). Se o pagamento já foi importado com outro valor ou data, procure ele no Extrato e use "Pagar fatura" normalmente.</div>'}
+  };
+  return `<div class="form">
+    <div class="hint">Escolha o lançamento que foi o pagamento desta fatura (Pix, transferência, débito automático). Ele deixa de contar como despesa e vira o pagamento do cartão — assim o mesmo gasto não é contado duas vezes.</div>
+    ${strict.length ? `<div class="sub" style="margin-top:8px"><b>Parece ser este:</b></div>${strict.map(row).join('')}` : '<div class="empty">Nenhum débito com o valor da fatura.</div>'}
+    ${loose.length ? `<div class="sub" style="margin-top:12px"><b>Outros débitos perto do vencimento:</b></div>${loose.map(row).join('')}` : ''}
+    <div class="hint" style="margin-top:10px">Se o pagamento saiu de outra conta da família, use <b>Pagar fatura</b> escolhendo essa conta como origem. Só use <b>Pagar fatura</b> se o pagamento ainda não aparece em nenhuma conta — senão ele é lançado duas vezes.</div>
     <div class="btns"><button class="ghost sm" onclick="linkPayPicker=null;render()">Cancelar</button></div>
   </div>`;
 }
 function confirmLinkPay(txId, cardId, invoiceKey) {
-  if (!confirm('Vincular este lançamento como pagamento da fatura? Ele deixa de contar como despesa avulsa e passa a ser o pagamento do cartão.')) return;
+  const tx = S.txs.find((t) => t.id === txId);
+  const card = S.accounts.find((a) => a.id === cardId);
+  const inv = card && invoicesOf(S, card).find((i) => i.key === invoiceKey);
+  let aviso = '';
+  if (tx && inv) {
+    const v = Math.abs(tx.amount);
+    if (v < inv.remaining - 5) aviso = `\n\nAtenção: este débito (${fmtBRL(v)}) é menor que o que falta na fatura (${fmtBRL(inv.remaining)}). Conta como pagamento parcial e ainda ficam ${fmtBRL(inv.remaining - v)} em aberto.`;
+    else if (v > inv.remaining + 5) aviso = `\n\nAtenção: este débito (${fmtBRL(v)}) é maior que o que falta na fatura (${fmtBRL(inv.remaining)}). A diferença de ${fmtBRL(v - inv.remaining)} fica como crédito no cartão.`;
+  }
+  if (!confirm('Vincular este lançamento como pagamento da fatura? Ele deixa de contar como despesa avulsa e passa a ser o pagamento do cartão.' + aviso)) return;
   try {
     linkExistingAsCardPayment(S, txId, cardId, invoiceKey);
     persistNow(); linkPayPicker = null; render();
