@@ -21,6 +21,24 @@
 body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:#1B2A3A; padding-bottom:76px; font-size:18px; }
 .avaliacao-banner { background:var(--brass); color:#14263D; font-weight:600; font-size:0.92rem; padding:9px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 .avaliacao-banner a { color:#14263D; text-decoration:underline; font-weight:700; white-space:nowrap; }
+
+/* ── tutorial interativo ── */
+.tutorial-spotlight { position:relative; z-index:201; box-shadow:0 0 0 4px rgba(185,138,47,.9), 0 0 24px 6px rgba(185,138,47,.6); border-radius:10px; animation:tutorialPulse 1.4s ease-in-out infinite; }
+@keyframes tutorialPulse { 0%,100% { box-shadow:0 0 0 4px rgba(185,138,47,.9), 0 0 18px 4px rgba(185,138,47,.55); } 50% { box-shadow:0 0 0 6px rgba(185,138,47,.6), 0 0 28px 10px rgba(185,138,47,.35); } }
+.tutorial-overlay { position:fixed; left:12px; right:12px; bottom:84px; z-index:200; display:flex; gap:10px; align-items:flex-end; animation:tutorialSlideIn .35s ease-out; pointer-events:none; }
+@keyframes tutorialSlideIn { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+.tutorial-avatar { flex:0 0 52px; width:52px; height:52px; border-radius:50%; overflow:hidden; background:var(--brass); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.3rem; border:2px solid #fff; box-shadow:0 2px 10px rgba(20,38,61,.3); }
+.tutorial-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+.tutorial-balao { pointer-events:auto; position:relative; flex:1; max-width:420px; background:#fff; border:1px solid #DDE3EA; border-radius:16px; padding:14px 16px; box-shadow:0 8px 28px rgba(20,38,61,.22); }
+.tutorial-balao::before { content:''; position:absolute; left:-7px; bottom:16px; width:14px; height:14px; background:#fff; border-left:1px solid #DDE3EA; border-bottom:1px solid #DDE3EA; transform:rotate(45deg); }
+.tutorial-nome { font-weight:700; color:var(--ink); font-size:.8rem; margin-bottom:4px; }
+.tutorial-fala { font-size:.96rem; line-height:1.4; color:var(--ink); }
+.tutorial-fechar { position:absolute; top:6px; right:8px; border:none; background:none; color:var(--neutral); font-size:1.1rem; line-height:1; cursor:pointer; padding:4px; }
+.tutorial-opcoes { display:flex; flex-direction:column; gap:7px; margin-top:12px; }
+.tutorial-btn { padding:10px 14px; border-radius:10px; border:none; background:var(--brass); color:#fff; font-weight:700; font-size:.92rem; cursor:pointer; }
+.tutorial-btn:nth-child(2) { background:#EAEFF4; color:var(--ink); }
+.tutorial-btn:nth-child(3) { background:#EAEFF4; color:var(--ink); }
+
 .guia { display:flex; gap:12px; align-items:flex-start; margin:0 0 16px; }
 .guia-avatar { flex:0 0 60px; width:60px; height:60px; border-radius:50%; overflow:hidden; background:var(--brass); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.5rem; border:2px solid #fff; box-shadow:0 2px 8px rgba(20,38,61,.2); }
 .guia-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
@@ -703,7 +721,7 @@ function seedOptions() {
   return SEED_MARKET_OPTIONS.map((o) => ({ id: uid(), ...o }));
 }
 function blankState() {
-  return { v: 1, createdAt: new Date().toISOString(), people: [], accounts: [], categories: SEED_CATEGORIES, rules: SEED_RULES,
+  return { v: 1, createdAt: new Date().toISOString(), tutorial: { step: 'boasvindas' }, people: [], accounts: [], categories: SEED_CATEGORIES, rules: SEED_RULES,
            txs: [], links: [], rejected: [], batches: [], checks: [], excluded: [],
            investments: [], planned: [], goals: [], layoutProfiles: {}, market: DEFAULT_MARKET, marketOptions: seedOptions(),
            security: { events: [] } };
@@ -2160,7 +2178,7 @@ function dispensarGuia() {
   persist(); render();
 }
 function viewGuia(local) {
-  if (!S || S.guiaOculta) return '';
+  if (!S || S.guiaOculta || S.tutorial) return ''; // contas novas usam o tutorial interativo, não esse aviso
   const passos = guiaPassos();
   const atual = passos.findIndex((x) => !x.ok);
   if (atual === -1) return '';   // tudo feito: a guia some sozinha
@@ -2441,7 +2459,9 @@ function viewLanding() {
 /* ── onboarding: importa primeiro, cadastro só depois de ver o resultado ── */
 function startOnboarding(e) {
   if (e) e.preventDefault();
-  onboarding = { step: 'import', parsed: null, fileName: '', error: '', busy: false };
+  // Vai direto para a criação de senha — importar extrato deixou de ser obrigatório
+  // logo de cara; agora é um passo do tutorial interativo, depois que a conta existe.
+  onboarding = { step: 'password', parsed: null, fileName: '', error: '', busy: false };
   render();
 }
 async function onboardingFile(file) {
@@ -2896,6 +2916,145 @@ function diasRestantesAvaliacao() {
   const restam = Math.ceil((limite - Date.now()) / (24 * 60 * 60 * 1000));
   return restam > 0 ? restam : 0;
 }
+/* ═══════════════════════ TUTORIAL INTERATIVO ═══════════════════════
+   Substitui a antiga importação obrigatória: a Sofia guia o usuário
+   passo a passo logo que a conta é criada — senha → biometria →
+   pessoa → conta → primeiro lançamento — com balão animado, botões
+   de escolha, e destaque visual (spotlight) no que precisa tocar. */
+
+const TUTORIAL_PASSOS = {
+  boasvindas: {
+    fala: () => 'Oi! Eu sou a Sofia 👋 Vou te ajudar a deixar tudo pronto em menos de 2 minutos. Bora?',
+    opcoes: () => [{ texto: 'Vamos lá! →', ir: 'biometria' }],
+  },
+  biometria: {
+    fala: () => 'Quer entrar com digital ou rosto, sem precisar digitar a senha toda vez?',
+    opcoes: () => (window.PublicKeyCredential && window.isSecureContext)
+      ? [{ texto: 'Sim, ativar', acao: 'ativarBiometriaTutorial' }, { texto: 'Agora não', ir: 'ir_pessoa' }]
+      : [{ texto: 'Entendi, continuar →', ir: 'ir_pessoa' }],
+  },
+  ir_pessoa: {
+    fala: () => 'Primeiro passo: quem vai usar o app com você?',
+    opcoes: () => [{ texto: 'Cadastrar pessoa', acao: 'irParaCadastroPessoa' }],
+  },
+  aguardando_pessoa: {
+    fala: () => {
+      const aberto = $('#form-person') && !$('#form-person').classList.contains('hidden');
+      return aberto ? 'Digite o nome e toque em "Salvar pessoa".' : 'Toque em "Nova pessoa" aqui embaixo.';
+    },
+    alvo: () => ($('#form-person') && !$('#form-person').classList.contains('hidden')) ? '#person-name' : 'button[onclick="toggle(\'form-person\')"]',
+  },
+  pos_pessoa: {
+    fala: (ctx) => `Ótimo! Você cadastrou ${esc(ctx.nomePessoa || 'essa pessoa')}! 🎉 Quer cadastrar mais alguém, ou já vamos pra conta bancária?`,
+    opcoes: () => [{ texto: 'Cadastrar outra pessoa', ir: 'aguardando_pessoa' }, { texto: 'Vamos pra conta →', acao: 'irParaCadastroConta' }],
+  },
+  aguardando_conta: {
+    fala: () => {
+      const aberto = $('#form-acc') && !$('#form-acc').classList.contains('hidden');
+      return aberto ? 'Dê um nome pra conta (ex.: Itaú Corrente) e toque em "Salvar conta".' : 'Toque em "Nova conta" aqui embaixo.';
+    },
+    alvo: () => ($('#form-acc') && !$('#form-acc').classList.contains('hidden')) ? '#acc-name' : 'button[onclick="toggle(\'form-acc\')"]',
+  },
+  pos_conta: {
+    fala: (ctx) => `Perfeito! A conta ${esc(ctx.nomeConta || '')} está cadastrada! 🎉 Quer cadastrar outra conta, ou já vamos registrar o primeiro gasto?`,
+    opcoes: () => [{ texto: 'Cadastrar outra conta', ir: 'aguardando_conta' }, { texto: 'Lançar um gasto →', acao: 'irParaLancamento' }, { texto: 'Importar extrato do banco →', acao: 'irParaImportar' }],
+  },
+  aguardando_lancamento: {
+    fala: () => (typeof manualForm !== 'undefined' && manualForm.open) ? 'Preencha o valor (use negativo pra gasto, ex.: -50,00) e toque em "Incluir lançamento".' : 'Toque em "+ Lançamento manual" aqui embaixo.',
+    alvo: () => (typeof manualForm !== 'undefined' && manualForm.open) ? '#mt-amount' : 'button[onclick="openNewManualTx()"]',
+  },
+  aguardando_import: {
+    fala: () => 'Escolha o arquivo do seu banco (PDF, CSV ou OFX) aqui embaixo.',
+    alvo: () => 'input[onchange*="impFile"]',
+  },
+  concluido: {
+    fala: () => 'Isso! Você já sabe o essencial 🎉 Qualquer dúvida, o manual completo está em Mais → Manual do usuário.',
+    opcoes: () => [{ texto: 'Show, obrigado!', acao: 'encerrarTutorial' }],
+  },
+};
+
+function tutorialAtivo() { return S && S.tutorial && S.tutorial.step && S.tutorial.step !== 'concluido_fechado'; }
+
+function tutorialIr(step, ctx) {
+  S.tutorial = Object.assign({}, S.tutorial, ctx || {}, { step });
+  persist(); render();
+}
+function ativarBiometriaTutorial() {
+  SFSec.enableBiometric().then(() => {
+    SFSec.logEvent(S, 'BIOMETRIA_ATIVADA', 'BIOMETRIA');
+    tutorialIr('ir_pessoa');
+  }).catch((e) => { alert(e.message); tutorialIr('ir_pessoa'); });
+}
+function irParaCadastroPessoa() {
+  setTab('contas');
+  const f = $('#form-person');
+  if (f && f.classList.contains('hidden')) toggle('form-person');
+  tutorialIr('aguardando_pessoa', { baselinePessoas: S.people.length });
+}
+function irParaCadastroConta() {
+  const f = $('#form-acc');
+  if (f && f.classList.contains('hidden')) toggle('form-acc');
+  tutorialIr('aguardando_conta', { baselineContas: S.accounts.length });
+}
+function irParaLancamento() {
+  setTab('extrato');
+  if (S.accounts.length) extAccount = S.accounts[S.accounts.length - 1].id;
+  tutorialIr('aguardando_lancamento', { baselineTxs: S.txs.length });
+}
+function irParaImportar() {
+  setTab('importar');
+  tutorialIr('aguardando_import', { baselineTxs: S.txs.length });
+}
+function encerrarTutorial() { tutorialIr('concluido_fechado'); }
+function dispensarTutorial() {
+  if (!confirm('Pular a explicação guiada? Você pode cadastrar tudo por conta própria quando quiser.')) return;
+  tutorialIr('concluido_fechado');
+}
+
+/* Detecta progresso automático (pessoa/conta/lançamento criados) e avança sozinho,
+   chamado a cada render() enquanto o tutorial está ativo. */
+function tutorialChecarProgresso() {
+  if (!tutorialAtivo()) return;
+  const t = S.tutorial;
+  if (t.step === 'aguardando_pessoa' && S.people.length > (t.baselinePessoas ?? 0)) {
+    tutorialIr('pos_pessoa', { nomePessoa: S.people[S.people.length - 1].name });
+  } else if (t.step === 'aguardando_conta' && S.accounts.length > (t.baselineContas ?? 0)) {
+    tutorialIr('pos_conta', { nomeConta: S.accounts[S.accounts.length - 1].name });
+  } else if ((t.step === 'aguardando_lancamento' || t.step === 'aguardando_import') && S.txs.length > (t.baselineTxs ?? 0)) {
+    tutorialIr('concluido');
+  }
+}
+
+function viewTutorialOverlay() {
+  if (!tutorialAtivo()) return '';
+  const passo = TUTORIAL_PASSOS[S.tutorial.step];
+  if (!passo) return '';
+  const fala = passo.fala(S.tutorial);
+  const opcoes = passo.opcoes ? passo.opcoes() : [];
+  const avatar = SF_GUIA_IMG ? `<img src="${SF_GUIA_IMG}" alt="">` : 'S';
+  return `<div class="tutorial-overlay">
+    <div class="tutorial-avatar">${avatar}</div>
+    <div class="tutorial-balao">
+      <button class="tutorial-fechar" onclick="dispensarTutorial()" title="Pular tutorial">×</button>
+      <div class="tutorial-nome">Sofia</div>
+      <div class="tutorial-fala">${fala}</div>
+      ${opcoes.length ? `<div class="tutorial-opcoes">${opcoes.map((o) => `<button class="tutorial-btn" onclick="${o.acao ? o.acao + '()' : `tutorialIr('${o.ir}')`}">${esc(o.texto)}</button>`).join('')}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+/* Aplica o destaque visual (spotlight) no elemento que o passo atual pede pra tocar.
+   Roda depois do HTML já estar na tela, porque o alvo pode estar em qualquer tela. */
+function tutorialAplicarDestaque() {
+  document.querySelectorAll('.tutorial-spotlight').forEach((el) => el.classList.remove('tutorial-spotlight'));
+  if (!tutorialAtivo()) return;
+  const passo = TUTORIAL_PASSOS[S.tutorial.step];
+  if (!passo || !passo.alvo) return;
+  let el;
+  try { el = document.querySelector(passo.alvo()); } catch (e) { return; }
+  if (el) { el.classList.add('tutorial-spotlight'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+}
+
 function viewAvaliacaoBanner() {
   const dias = diasRestantesAvaliacao();
   if (dias === null) return '';
@@ -4791,13 +4950,15 @@ function render() {
   const views = { inicio: viewInicio, importar: viewImportar, extrato: viewExtrato, contas: viewContas,
                   auditoria: viewAuditoria, investir: viewInvestir, cartoes: viewCartoes, seguranca: viewSeguranca, consolidado: viewConsolidado, relatorios: viewRelatorios, calendario: viewCalendario, consultor: viewConsultor, mais: viewMais };
   const health = SFSec.saveHealth();
+  tutorialChecarProgresso();
   $('#view').innerHTML =
     viewAvaliacaoBanner()
     + (storageOk ? '' : '<div class="error">Este navegador não permitiu salvar dados (modo de visualização?). Baixe o arquivo e abra direto no navegador do seu computador ou celular.</div>')
     + (health.error ? `<div class="error"><b>Seus dados NÃO foram salvos.</b><br>${esc(health.error)}</div>` : '')
-    + views[tab]() + viewAuthModal();
+    + views[tab]() + viewAuthModal() + viewTutorialOverlay();
   document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   syncEyeIcon();
+  tutorialAplicarDestaque();
 }
 
 /** Faz uma gravação de verdade e confirma, na hora, se funcionou. */
