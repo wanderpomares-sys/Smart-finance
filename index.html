@@ -2625,11 +2625,22 @@ function finishSetup() {
   unlockedBoot();
 }
 function copyRecovery() { navigator.clipboard?.writeText(setupRecovery); alert('Código copiado.'); }
+/** Baixa um arquivo pro aparelho. Precisa estar DE VERDADE na página (appendChild) antes
+ *  do clique simulado — sem isso, o download falha silenciosamente em vários navegadores
+ *  de celular, principalmente dentro de PWA instalado. */
+function baixarArquivo(nome, blob) {
+  const a = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  a.href = url; a.download = nome; a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 function downloadRecovery() {
   const blob = new Blob(['Smart Finance Family — código de recuperação\n\n' + setupRecovery +
     '\n\nGuarde este código. Sem ele e sem a senha, os dados não podem ser abertos por ninguém.\n'], { type: 'text/plain' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = 'smart-finance-recuperacao.txt'; a.click();
+  baixarArquivo('smart-finance-recuperacao.txt', blob);
 }
 
 /* ── tela de bloqueio ── */
@@ -2987,13 +2998,12 @@ function ativarBiometriaTutorial() {
 }
 function irParaCadastroPessoa() {
   setTab('contas');
-  const f = $('#form-person');
-  if (f && f.classList.contains('hidden')) toggle('form-person');
+  // não abre o formulário sozinho: o próprio passo "aguardando_pessoa" destaca o
+  // botão "Nova pessoa" primeiro, e só depois o campo — a pessoa aprende onde tocar.
   tutorialIr('aguardando_pessoa', { baselinePessoas: S.people.length });
 }
 function irParaCadastroConta() {
-  const f = $('#form-acc');
-  if (f && f.classList.contains('hidden')) toggle('form-acc');
+  // idem: destaca "Nova conta" primeiro, sem abrir sozinho.
   tutorialIr('aguardando_conta', { baselineContas: S.accounts.length });
 }
 function irParaLancamento() {
@@ -3411,9 +3421,7 @@ function toCsv(rows) {
   return '\uFEFF' + [cols.join(';'), ...rows.map((r) => cols.map((c) => cell(r[c])).join(';'))].join('\r\n');
 }
 function download(name, content, type) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([content], { type: type || 'text/csv;charset=utf-8' }));
-  a.download = name; a.click();
+  baixarArquivo(name, new Blob([content], { type: type || 'text/csv;charset=utf-8' }));
 }
 function exportExtratoCsv() {
   requireAuth('Exportar o extrato completo para planilha.', async () => {
@@ -4888,10 +4896,7 @@ function exportBackup() {
     const pwd = prompt('Senha para proteger o arquivo de backup (você precisará dela para restaurar):');
     if (!pwd || pwd.length < 8) { alert('Use uma senha de pelo menos 8 caracteres.'); return; }
     const content = await SFSec.exportEncrypted(S, pwd);
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
-    a.download = 'smart-finance-backup-' + new Date().toISOString().slice(0, 10) + '.sfbackup.json';
-    a.click();
+    baixarArquivo('smart-finance-backup-' + new Date().toISOString().slice(0, 10) + '.sfbackup.json', new Blob([content], { type: 'application/json' }));
     SFSec.logEvent(S, 'BACKUP_EXPORTADO', null, paraTransferencia ? 'transferência para outro aparelho' : 'cópia de segurança');
     if (paraTransferencia) {
       // Este aparelho perde a licença agora — o arquivo já foi gerado com ela dentro,
