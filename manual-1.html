@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual do Usuário — Smart Finance Family</title>
+<style>
+  :root { --navy:#14263D; --navy2:#0d1a2b; --gold:#B98A2F; --pos:#1E7D5A; --neg:#C0392B; --neutral:#5A6B7F; --bg:#F4F6F8; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:#1B2A3A; line-height:1.55; }
+  header { background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 100%); color:#fff; padding:28px 20px 22px; text-align:center; }
+  header h1 { margin:0 0 6px; font-size:1.5rem; }
+  header p { margin:0; opacity:.85; font-size:.95rem; }
+  nav { position:sticky; top:0; background:#fff; border-bottom:1px solid #e2e6ea; padding:10px 14px; overflow-x:auto; white-space:nowrap; z-index:10; -webkit-overflow-scrolling:touch; }
+  nav a { display:inline-block; margin-right:8px; padding:7px 13px; border-radius:999px; background:var(--bg); color:var(--navy); text-decoration:none; font-size:.85rem; font-weight:600; }
+  main { max-width:720px; margin:0 auto; padding:18px 16px 60px; }
+  section { background:#fff; border-radius:14px; padding:20px; margin-bottom:16px; box-shadow:0 1px 4px rgba(20,38,61,.06); scroll-margin-top:56px; }
+  section h2 { margin:0 0 10px; font-size:1.2rem; color:var(--navy); display:flex; align-items:center; gap:8px; }
+  section h3 { font-size:1rem; color:var(--navy); margin:18px 0 8px; }
+  p { margin:0 0 10px; font-size:.96rem; }
+  ul, ol { margin:0 0 10px; padding-left:22px; font-size:.96rem; }
+  li { margin-bottom:5px; }
+  .tip { background:#FBF3E3; border-left:3px solid var(--gold); padding:10px 14px; border-radius:0 8px 8px 0; font-size:.9rem; margin:10px 0; }
+  .warn { background:#FDEDEC; border-left:3px solid var(--neg); padding:10px 14px; border-radius:0 8px 8px 0; font-size:.9rem; margin:10px 0; }
+  .step { display:flex; gap:10px; margin-bottom:10px; align-items:flex-start; }
+  .step .n { flex:0 0 24px; height:24px; border-radius:50%; background:var(--navy); color:#fff; font-size:.78rem; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .step div.txt { font-size:.94rem; padding-top:1px; }
+  table { width:100%; border-collapse:collapse; font-size:.88rem; margin:10px 0; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid #eef0f2; }
+  th { color:var(--neutral); font-weight:600; }
+  .plan { border:1px solid #e2e6ea; border-radius:12px; padding:14px; margin-bottom:10px; }
+  .plan.destaque { border-color:var(--gold); background:#FFFBF2; }
+  .plan b.price { color:var(--navy); font-size:1.15rem; }
+  code { background:#eef0f2; padding:1px 6px; border-radius:4px; font-size:.85rem; }
+  footer { text-align:center; color:var(--neutral); font-size:.82rem; padding:20px; }
+  .top { text-align:right; }
+  .top a { font-size:.8rem; color:var(--neutral); text-decoration:none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Smart Finance Family</h1>
+  <p>Manual do usuário — Versão 2.0 — Setembro de 2026</p>
+</header>
+
+<nav>
+  <a href="#comecar">Começar</a>
+  <a href="#avaliacao">Avaliação e planos</a>
+  <a href="#importar">Importar extrato</a>
+  <a href="#fatura">Fatura já paga</a>
+  <a href="#cartoes">Cartões</a>
+  <a href="#calendario">Calendário</a>
+  <a href="#consultor">Consultor</a>
+  <a href="#relatorios">Relatórios</a>
+  <a href="#auditoria">Auditoria</a>
+  <a href="#investimentos">Investimentos</a>
+  <a href="#seguranca">Segurança</a>
+  <a href="#atualizacoes">Atualizações</a>
+  <a href="#faq">Dúvidas</a>
+</nav>
+
+<main>
+
+<section id="comecar">
+  <h2>🚀 Primeiros passos</h2>
+  <p>O Smart Finance Family organiza as finanças de toda a família num só aparelho — sem servidor, sem nuvem. Tudo fica criptografado só no seu celular.</p>
+  <div class="step"><div class="n">1</div><div class="txt">Na tela inicial, toque em <b>Começar agora</b>.</div></div>
+  <div class="step"><div class="n">2</div><div class="txt">Crie uma senha. Ela protege seus dados — sem ela, ninguém abre o app, nem você (só com o código de recuperação, que aparece na tela seguinte — anote ou baixe em arquivo).</div></div>
+  <div class="step"><div class="n">3</div><div class="txt">Pronto — a <b>Sofia</b> aparece num balão no rodapé e te guia passo a passo a partir daqui.</div></div>
+
+  <h3>O tutorial da Sofia</h3>
+  <p>É interativo de verdade: a cada passo, o botão ou campo certo pisca com um contorno dourado na tela, e o balão da Sofia explica o que fazer. A ordem é:</p>
+  <ol>
+    <li><b>Biometria</b> — pergunta se você quer desbloquear com digital ou rosto (só aparece se o aparelho suportar).</li>
+    <li><b>Cadastrar pessoa</b> — destaca o botão <b>Nova pessoa</b>; depois de tocar, destaca o campo de nome. Assim que você salva, a Sofia parabeniza citando o nome.</li>
+    <li><b>Escolha</b>: cadastrar mais alguém, ou seguir pra conta.</li>
+    <li><b>Cadastrar conta</b> — mesmo formato: destaca <b>Nova conta</b>, depois os campos.</li>
+    <li><b>Escolha final</b>: lançar um gasto manualmente, ou importar um extrato do banco.</li>
+    <li>Ao concluir essa última ação, a Sofia encerra o tutorial.</li>
+  </ol>
+  <div class="tip">Pode pular a qualquer momento tocando no <b>×</b> no canto do balão. Se fechar o app no meio do tutorial, ele retoma sozinho no mesmo passo e na tela certa quando você voltar.</div>
+</section>
+
+<section id="avaliacao">
+  <h2>💳 Avaliação grátis e planos</h2>
+  <p>Você usa o app grátis por <b>7 dias</b>, sem precisar de cartão nem pagar nada antes. Uma faixa no topo do app mostra quantos dias faltam.</p>
+  <div class="tip">Contas criadas antes desta atualização não têm esse limite — continuam liberadas.</div>
+
+  <h3>Depois dos 7 dias</h3>
+  <p>Se o período de avaliação acabar sem uma licença registrada, o app trava e mostra as opções de plano:</p>
+  <div class="plan">
+    <div><b>Plano Anual</b></div>
+    <div><b class="price">R$ 97</b> /ano</div>
+    <p style="margin:6px 0 0">Acesso completo por 12 meses.</p>
+  </div>
+  <div class="plan destaque">
+    <div><b>Família Vitalício</b></div>
+    <div><b class="price">R$ 197</b> pagamento único</div>
+    <p style="margin:6px 0 0">Pague uma vez, use pra sempre — gerencie você e toda a família, num só aparelho, sem renovar nunca mais.</p>
+  </div>
+
+  <h3>Como funciona a licença</h3>
+  <ol>
+    <li>Ao tocar num dos planos, você é levado pro pagamento.</li>
+    <li>Depois de pagar, envie o comprovante <b>junto com o código deste aparelho</b> (aparece na mesma tela, e também em <b>Segurança → Licença</b>, a qualquer momento).</li>
+    <li>Você recebe de volta um arquivo <code>.sflicense</code> — envie ele pro app na mesma tela, e o acesso libera na hora.</li>
+  </ol>
+  <div class="tip">A licença é amarrada ao código deste aparelho — copiar o arquivo pra outro celular não funciona nele. Se você trocar de celular, restaure seu backup (veja a seção Segurança) que a licença vai junto.</div>
+</section>
+
+<section id="importar">
+  <h2>📥 Importando um extrato</h2>
+  <p>Na aba <b>Importar</b>, escolha o arquivo do seu banco — PDF, CSV ou OFX. A leitura acontece toda no seu celular; nada é enviado a lugar nenhum.</p>
+
+  <h3>Bancos aceitos</h3>
+  <p>O app já reconhece Itaú, Nubank, Bradesco, Santander, Mercado Pago e PicPay automaticamente. Pra qualquer outro banco, cadastre a conta escolhendo <b>Outro</b> e digitando o nome (ex.: Banco Inter, C6, Sicoob) — o app aprende sozinho o formato desse banco na primeira importação.</p>
+
+  <h3>Conferência automática</h3>
+  <p>Depois de ler o arquivo, o app mostra uma <b>barra de confiança</b> comparando os lançamentos com o saldo informado pelo banco:</p>
+  <ul>
+    <li><b>Confiança alta (barra verde):</b> pode importar direto.</li>
+    <li><b>Confiança baixa (barra amarela/vermelha):</b> o app explica o que não bateu. Geralmente basta informar o <b>saldo final impresso no extrato</b> no campo indicado e tocar em <b>Reler com esse saldo</b>.</li>
+  </ul>
+  <div class="tip">Já testado com extratos que têm páginas cortadas, linhas de saldo sem lançamento, e formatos que não declaram o saldo do início do período — o app deduz sozinho nesses casos.</div>
+</section>
+
+<section id="fatura">
+  <h2>🔁 Já paguei a fatura — evitar gasto em dobro</h2>
+  <p>Se você paga a fatura do cartão com um Pix ou transferência de outra conta, e depois importa o extrato do cartão, o app pode contar o gasto duas vezes (uma na fatura, outra na transferência). Pra evitar isso:</p>
+  <div class="step"><div class="n">1</div><div class="txt">Vá em <b>Mais → Cartões</b> e abra a fatura já paga.</div></div>
+  <div class="step"><div class="n">2</div><div class="txt">Se o app já identificou o pagamento, vai aparecer uma sugestão: <b>"Este débito parece ser o pagamento desta fatura"</b> — toque em <b>Foi este — vincular</b>.</div></div>
+  <div class="step"><div class="n">3</div><div class="txt">Se não aparecer sugestão automática, toque em <b>Já paguei — escolher o pagamento</b> e selecione a transferência certa na lista.</div></div>
+  <div class="warn">Não use o botão <b>Pagar fatura</b> se o pagamento já está lançado em alguma conta — isso cria um segundo débito. Use "Pagar fatura" só quando o pagamento ainda não aparece em nenhuma conta do app.</div>
+</section>
+
+<section id="cartoes">
+  <h2>▢ Cartões de crédito</h2>
+  <p>Cadastre o dia de fechamento e vencimento de cada cartão. O app organiza as compras em faturas automaticamente e avisa o melhor dia pra comprar (logo após o fechamento, pra ganhar o prazo máximo).</p>
+  <p>Mostra também o limite usado e livre, e permite lançar uma compra manualmente (parcelada ou não) antes mesmo dela aparecer no extrato.</p>
+</section>
+
+<section id="calendario">
+  <h2>▥ Calendário</h2>
+  <p>Mostra o que já saiu da conta e o que ainda vence no mês — contas fixas, faturas e compromissos — pra você não ser pego de surpresa.</p>
+</section>
+
+<section id="consultor">
+  <h2>✦ Consultor</h2>
+  <p>Analisa seus dados e traz observações e projeções — por exemplo, se vale mais quitar uma dívida ou deixar o dinheiro investido, comparando a taxa de cada uma.</p>
+</section>
+
+<section id="relatorios">
+  <h2>▤ Relatórios</h2>
+  <p>Evolução do patrimônio ao longo do tempo, comparação de orçamento por categoria, e exportação dos seus dados.</p>
+</section>
+
+<section id="auditoria">
+  <h2>⚖ Auditoria de saldos</h2>
+  <p>Confere se o saldo que o app calcula bate com o saldo real do banco. Se divergir, mostra a causa mais provável (lançamento faltando, duplicado, ou data errada) pra você corrigir rápido.</p>
+</section>
+
+<section id="investimentos">
+  <h2>◆ Investimentos</h2>
+  <p>Acompanhe a rentabilidade dos seus investimentos com dados de CDI, Selic e IPCA direto do Banco Central e do IBGE — não depende de ninguém digitar isso manualmente. Tem também um comparador de onde render melhor e um simulador de aporte.</p>
+</section>
+
+<section id="seguranca">
+  <h2>⛨ Segurança</h2>
+  <h3>Como você entra</h3>
+  <p>Senha é o método principal. Você também pode ativar <b>PIN numérico</b> e <b>biometria</b> (digital ou rosto) pra desbloquear mais rápido.</p>
+
+  <h3>Bloqueio automático</h3>
+  <p>Escolha depois de quanto tempo sem uso o app tranca sozinho e pede senha de novo.</p>
+
+  <h3>Backup</h3>
+  <p>Gera um arquivo com todos os seus dados, protegido por uma senha própria (diferente da senha do app). Ao exportar, o app pergunta:</p>
+  <ul>
+    <li><b>É pra levar pra outro celular?</b> — o arquivo sai com tudo, e este aparelho perde a licença (você restaura no aparelho novo pra recuperar o acesso).</li>
+    <li><b>É só uma cópia de segurança?</b> — nada muda neste aparelho.</li>
+  </ul>
+  <div class="tip">Se mudar de ideia depois de escolher "outro celular", basta restaurar o mesmo arquivo de volta neste aparelho — a licença volta.</div>
+
+  <h3>Licença</h3>
+  <p>Mostra o plano ativo (se houver) e o <b>código deste aparelho</b> — é esse código que você informa na hora de comprar ou renovar um plano.</p>
+
+  <h3>Histórico de segurança</h3>
+  <p>Registro de acessos e eventos importantes (troca de senha, ativação de biometria, backups), pra você acompanhar.</p>
+</section>
+
+<section id="atualizacoes">
+  <h2>🔄 Atualizações do app</h2>
+  <p>Como não existe loja de aplicativos aqui, o app se atualiza sozinho: toda vez que você abre ele com internet, ele confere se existe uma versão mais nova publicada. Se existir, aparece uma faixa verde no topo: <b>"Uma versão mais nova do app está disponível"</b>.</p>
+  <p>Toque em <b>Atualizar agora</b> pra carregar a versão nova na hora. Seus dados não são afetados — eles ficam salvos no aparelho, independente da versão do app.</p>
+</section>
+
+<section id="faq">
+  <h2>❓ Perguntas frequentes</h2>
+
+  <h3>Meus dados ficam seguros?</h3>
+  <p>Sim. Tudo é criptografado e guardado só no seu celular. Não existe servidor — nem os desenvolvedores têm acesso aos seus dados.</p>
+
+  <h3>Dá pra usar em mais de um celular?</h3>
+  <p>O app é pensado pra <b>um aparelho só</b>, de onde você acompanha as contas de toda a família. Se precisar migrar pra um celular novo, use o backup — seus dados e sua licença vão junto.</p>
+
+  <h3>Esqueci minha senha, e agora?</h3>
+  <p>Use o código de recuperação gerado quando você criou a conta. Guarde ele num lugar seguro, fora do celular.</p>
+
+  <h3>Posso importar de um banco que não está na lista?</h3>
+  <p>Sim — cadastre a conta escolhendo <b>Outro</b> e digite o nome do banco. O app aprende o formato dele na primeira importação.</p>
+
+  <h3>O que acontece se eu não pagar depois dos 7 dias?</h3>
+  <p>O app trava a tela principal, mas <b>seus dados continuam salvos e criptografados</b> no aparelho. Assim que você registrar uma licença, tudo volta ao normal, sem perder nada.</p>
+</section>
+
+</main>
+
+<footer>Smart Finance Family — manual sujeito a pequenas mudanças conforme o app evolui.</footer>
+
+</body>
+</html>
