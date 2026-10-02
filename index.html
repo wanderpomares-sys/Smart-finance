@@ -2705,7 +2705,7 @@ function tabFromUrl() {
 }
 function unlockedBoot() {
   document.body.classList.remove('locked');
-  lockMsg = ''; lockBusy = false; tab = tabFromUrl() || 'inicio';
+  lockMsg = ''; lockBusy = false; tab = tabFromUrl() || tutorialAbaEsperada() || 'inicio';
   setValuesHidden(true); // toda vez que o app abre ou desbloqueia, os valores começam ocultos
   syncEyeIcon();
   touchActivity();
@@ -2984,7 +2984,9 @@ const TUTORIAL_PASSOS = {
   },
 };
 
+const TUTORIAL_TAB_POR_PASSO = { aguardando_pessoa: 'contas', aguardando_conta: 'contas', aguardando_lancamento: 'extrato', aguardando_import: 'importar' };
 function tutorialAtivo() { return S && S.tutorial && S.tutorial.step && S.tutorial.step !== 'concluido_fechado'; }
+function tutorialAbaEsperada() { return tutorialAtivo() && TUTORIAL_TAB_POR_PASSO[S.tutorial.step]; }
 
 function tutorialIr(step, ctx) {
   S.tutorial = Object.assign({}, S.tutorial, ctx || {}, { step });
