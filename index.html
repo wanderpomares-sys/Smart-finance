@@ -2951,7 +2951,7 @@ const TUTORIAL_PASSOS = {
   aguardando_pessoa: {
     fala: () => {
       const aberto = $('#form-person') && !$('#form-person').classList.contains('hidden');
-      return aberto ? 'Digite o nome e toque em "Salvar pessoa".' : 'Toque em "Nova pessoa" aqui embaixo.';
+      return aberto ? 'Digite o nome e toque em "Salvar pessoa".' : 'Toque no botão "Nova pessoa" destacado em dourado.';
     },
     alvo: () => ($('#form-person') && !$('#form-person').classList.contains('hidden')) ? '#person-name' : 'button[onclick="toggle(\'form-person\')"]',
   },
@@ -2962,7 +2962,7 @@ const TUTORIAL_PASSOS = {
   aguardando_conta: {
     fala: () => {
       const aberto = $('#form-acc') && !$('#form-acc').classList.contains('hidden');
-      return aberto ? 'Dê um nome pra conta (ex.: Itaú Corrente) e toque em "Salvar conta".' : 'Toque em "Nova conta" aqui embaixo.';
+      return aberto ? 'Dê um nome pra conta (ex.: Itaú Corrente) e toque em "Salvar conta".' : 'Toque no botão "Nova conta" destacado em dourado.';
     },
     alvo: () => ($('#form-acc') && !$('#form-acc').classList.contains('hidden')) ? '#acc-name' : 'button[onclick="toggle(\'form-acc\')"]',
   },
@@ -2971,7 +2971,7 @@ const TUTORIAL_PASSOS = {
     opcoes: () => [{ texto: 'Cadastrar outra conta', ir: 'aguardando_conta' }, { texto: 'Lançar um gasto →', acao: 'irParaLancamento' }, { texto: 'Importar extrato do banco →', acao: 'irParaImportar' }],
   },
   aguardando_lancamento: {
-    fala: () => (typeof manualForm !== 'undefined' && manualForm.open) ? 'Preencha o valor (use negativo pra gasto, ex.: -50,00) e toque em "Incluir lançamento".' : 'Toque em "+ Lançamento manual" aqui embaixo.',
+    fala: () => (typeof manualForm !== 'undefined' && manualForm.open) ? 'Preencha o valor (use negativo pra gasto, ex.: -50,00) e toque em "Incluir lançamento".' : 'Toque no botão "+ Lançamento manual" destacado em dourado.',
     alvo: () => (typeof manualForm !== 'undefined' && manualForm.open) ? '#mt-amount' : 'button[onclick="openNewManualTx()"]',
   },
   aguardando_import: {
@@ -3055,6 +3055,13 @@ function viewTutorialOverlay() {
 
 /* Aplica o destaque visual (spotlight) no elemento que o passo atual pede pra tocar.
    Roda depois do HTML já estar na tela, porque o alvo pode estar em qualquer tela. */
+function tutorialAtualizarBalao() {
+  if (!tutorialAtivo()) return;
+  const passo = TUTORIAL_PASSOS[S.tutorial.step];
+  const balao = document.querySelector('.tutorial-overlay .tutorial-fala');
+  if (passo && balao) balao.innerHTML = passo.fala(S.tutorial);
+  tutorialAplicarDestaque();
+}
 function tutorialAplicarDestaque() {
   document.querySelectorAll('.tutorial-spotlight').forEach((el) => el.classList.remove('tutorial-spotlight'));
   if (!tutorialAtivo()) return;
@@ -4492,7 +4499,7 @@ function viewContas() {
 }
 
 // ───────── ações ─────────
-function toggle(id) { $('#' + id).classList.toggle('hidden'); }
+function toggle(id) { $('#' + id).classList.toggle('hidden'); tutorialAtualizarBalao(); }
 function addPerson() {
   const name = $('#person-name').value.trim();
   if (!name) return;
