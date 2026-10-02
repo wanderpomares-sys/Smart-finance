@@ -1818,6 +1818,38 @@ const persist = () => { if (S) saveState(S); };
  *  importantes (importação, lançamentos), para não depender do app continuar aberto. */
 const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave(); } catch (e) { storageOk = false; } } };
 
+/* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
+   versão mais nova publicada no servidor (comparando o texto puro do index.html). */
+const SF_BUILD = '2026-10-02-01';
+let novaVersaoDisponivel = false;
+
+/** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
+ *  app (o Smart Finance Family nunca deveria ter um — isso é limpeza defensiva). Um
+ *  service worker esquecido é a causa mais comum de "atualizei o GitHub mas o celular
+ *  não muda", porque ele intercepta o carregamento e devolve a cópia antiga guardada nele. */
+function limparServiceWorkerAntigo() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister())).catch(() => {});
+  if (window.caches && caches.keys) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => {});
+}
+
+/** Busca o index.html direto do servidor (sem cache) e compara a marca de versão. Se vier
+ *  diferente da que está rodando agora, mostra um aviso pra atualizar — só funciona com
+ *  internet; sem conexão, falha em silêncio e tenta de novo na próxima vez que abrir. */
+function checarAtualizacaoApp() {
+  fetch(location.pathname + '?checar=' + Date.now(), { cache: 'no-store' })
+    .then((r) => r.ok ? r.text() : null)
+    .then((txt) => {
+      if (!txt) return;
+      const m = txt.match(/const SF_BUILD = '([^']+)'/);
+      if (m && m[1] !== SF_BUILD) { novaVersaoDisponivel = true; render(); }
+    })
+    .catch(() => {}); // offline ou bloqueado: tenta de novo na próxima abertura
+}
+function atualizarAgora() {
+  location.href = location.pathname + '?v=' + Date.now();
+}
+
 let tab = 'inicio';
 let imp = { step: 0, accountId: '', fileName: '', txs: [], statement: null, rows: [], include: {}, cat: {}, result: null, busy: false, error: '', calibration: null, lines: null, closingHint: '', resolution: null, identity: null, override: false, overrideStep: 0 };
 
@@ -3074,6 +3106,13 @@ function tutorialAplicarDestaque() {
   if (el) { el.classList.add('tutorial-spotlight'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
 }
 
+function viewAtualizacaoBanner() {
+  if (!novaVersaoDisponivel) return '';
+  return `<div class="avaliacao-banner" style="background:var(--pos);color:#fff">
+    <span>🔄 Uma versão mais nova do app está disponível</span>
+    <a href="#" onclick="atualizarAgora();return false" style="color:#fff">Atualizar agora</a>
+  </div>`;
+}
 function viewAvaliacaoBanner() {
   const dias = diasRestantesAvaliacao();
   if (dias === null) return '';
@@ -4966,7 +5005,8 @@ function render() {
   const health = SFSec.saveHealth();
   tutorialChecarProgresso();
   $('#view').innerHTML =
-    viewAvaliacaoBanner()
+    viewAtualizacaoBanner()
+    + viewAvaliacaoBanner()
     + (storageOk ? '' : '<div class="error">Este navegador não permitiu salvar dados (modo de visualização?). Baixe o arquivo e abra direto no navegador do seu computador ou celular.</div>')
     + (health.error ? `<div class="error"><b>Seus dados NÃO foram salvos.</b><br>${esc(health.error)}</div>` : '')
     + views[tab]() + viewAuthModal() + viewTutorialOverlay();
@@ -5010,6 +5050,8 @@ window.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('pagehide', flushPendingSave);
   window.addEventListener('beforeunload', flushPendingSave);
   try { SFTelemetry.track('session_start', sessionInfo()); SFTelemetry.flush(); } catch (e) {}
+  limparServiceWorkerAntigo();
+  setTimeout(checarAtualizacaoApp, 2000); // espera a tela principal carregar antes de checar
   bootScreen();
 });
 </script>
