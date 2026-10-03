@@ -35,9 +35,26 @@
   footer { text-align:center; color:var(--neutral); font-size:.82rem; padding:20px; }
   .top { text-align:right; }
   .top a { font-size:.8rem; color:var(--neutral); text-decoration:none; }
+  .fechar-manual { position:fixed; top:10px; right:10px; z-index:20; width:38px; height:38px; border-radius:50%;
+    background:rgba(255,255,255,.92); border:1px solid #DDE3EA; color:var(--navy); font-size:1.3rem; line-height:1;
+    display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(20,38,61,.2); cursor:pointer; }
 </style>
 </head>
 <body>
+
+<button class="fechar-manual" onclick="fecharManual()" title="Fechar e voltar ao app" aria-label="Fechar">×</button>
+<script>
+function fecharManual() {
+  // Funciona quando o manual foi aberto como aba nova pelo app (o caso normal).
+  window.close();
+  // Se não fechou (ex.: aba aberta direto, fora do app), volta pra tela anterior,
+  // ou, sem nenhuma, vai pro próprio app.
+  setTimeout(() => {
+    if (history.length > 1) history.back();
+    else location.href = './index.html';
+  }, 150);
+}
+</script>
 
 <header>
   <h1>Smart Finance Family</h1>
@@ -56,6 +73,7 @@
   <a href="#auditoria">Auditoria</a>
   <a href="#investimentos">Investimentos</a>
   <a href="#seguranca">Segurança</a>
+  <a href="#atualizacoes">Atualizações</a>
   <a href="#faq">Dúvidas</a>
 </nav>
 
@@ -65,12 +83,20 @@
   <h2>🚀 Primeiros passos</h2>
   <p>O Smart Finance Family organiza as finanças de toda a família num só aparelho — sem servidor, sem nuvem. Tudo fica criptografado só no seu celular.</p>
   <div class="step"><div class="n">1</div><div class="txt">Na tela inicial, toque em <b>Começar agora</b>.</div></div>
-  <div class="step"><div class="n">2</div><div class="txt">Se tiver um extrato do banco em mãos (PDF, CSV ou OFX), pode importar direto. Se não tiver, toque em <b>Começar sem extrato</b> — dá pra importar depois, a qualquer momento.</div></div>
-  <div class="step"><div class="n">3</div><div class="txt">Crie uma senha. Ela protege seus dados — sem ela, ninguém abre o app, nem você (só com o código de recuperação).</div></div>
-  <div class="step"><div class="n">4</div><div class="txt">Pronto — o app abre com a <b>Sofia</b>, sua guia, te ajudando a cadastrar quem vai usar, uma conta, e o primeiro lançamento.</div></div>
+  <div class="step"><div class="n">2</div><div class="txt">Crie uma senha. Ela protege seus dados — sem ela, ninguém abre o app, nem você (só com o código de recuperação, que aparece na tela seguinte — anote ou baixe em arquivo).</div></div>
+  <div class="step"><div class="n">3</div><div class="txt">Pronto — a <b>Sofia</b> aparece num balão no rodapé e te guia passo a passo a partir daqui.</div></div>
 
-  <h3>A guia (Sofia)</h3>
-  <p>Aparece no topo da tela enquanto você está começando, mostrando o que falta: cadastrar pessoa, cadastrar conta, e o primeiro lançamento ou extrato. Some sozinha quando os 3 passos terminam. Se preferir seguir por conta própria, toque em <b>Já sei usar</b>.</p>
+  <h3>O tutorial da Sofia</h3>
+  <p>É interativo de verdade: a cada passo, o botão ou campo certo pisca com um contorno dourado na tela, e o balão da Sofia explica o que fazer. A ordem é:</p>
+  <ol>
+    <li><b>Biometria</b> — pergunta se você quer desbloquear com digital ou rosto (só aparece se o aparelho suportar).</li>
+    <li><b>Cadastrar pessoa</b> — destaca o botão <b>Nova pessoa</b>; depois de tocar, destaca o campo de nome. Assim que você salva, a Sofia parabeniza citando o nome.</li>
+    <li><b>Escolha</b>: cadastrar mais alguém, ou seguir pra conta.</li>
+    <li><b>Cadastrar conta</b> — mesmo formato: destaca <b>Nova conta</b>, depois os campos.</li>
+    <li><b>Escolha final</b>: lançar um gasto manualmente, ou importar um extrato do banco.</li>
+    <li>Ao concluir essa última ação, a Sofia encerra o tutorial.</li>
+  </ol>
+  <div class="tip">Pode pular a qualquer momento tocando no <b>×</b> no canto do balão. Se fechar o app no meio do tutorial, ele retoma sozinho no mesmo passo e na tela certa quando você voltar.</div>
 </section>
 
 <section id="avaliacao">
@@ -177,6 +203,12 @@
 
   <h3>Histórico de segurança</h3>
   <p>Registro de acessos e eventos importantes (troca de senha, ativação de biometria, backups), pra você acompanhar.</p>
+</section>
+
+<section id="atualizacoes">
+  <h2>🔄 Atualizações do app</h2>
+  <p>Como não existe loja de aplicativos aqui, o app se atualiza sozinho: toda vez que você abre ele com internet, ele confere se existe uma versão mais nova publicada. Se existir, aparece uma faixa verde no topo: <b>"Uma versão mais nova do app está disponível"</b>.</p>
+  <p>Toque em <b>Atualizar agora</b> pra carregar a versão nova na hora. Seus dados não são afetados — eles ficam salvos no aparelho, independente da versão do app.</p>
 </section>
 
 <section id="faq">
