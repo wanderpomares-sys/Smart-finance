@@ -1820,7 +1820,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-08-01';
+const SF_BUILD = '2026-10-08-02';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3116,6 +3116,28 @@ function viewAtualizacaoBanner() {
     <a href="#" onclick="atualizarAgora();return false" style="color:#fff">Atualizar agora</a>
   </div>`;
 }
+function verPlanos(ev) {
+  if (ev) ev.preventDefault();
+  try { trackScreen('planos_modal'); } catch (e) {}
+  const antigo = document.getElementById('planos-overlay'); if (antigo) antigo.remove();
+  const codigo = getOrCreateDeviceId();
+  const d = document.createElement('div');
+  d.id = 'planos-overlay';
+  d.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  d.innerHTML = `<div class="card lockcard" style="max-width:440px;width:100%;max-height:90vh;overflow:auto;position:relative">
+    <button onclick="document.getElementById('planos-overlay').remove()" aria-label="Fechar" style="position:absolute;top:8px;right:12px;background:none;border:none;font-size:1.6rem;cursor:pointer">×</button>
+    <h2>Escolha seu plano</h2>
+    <p class="sub">Seus dados continuam salvos e criptografados no seu celular. Sem cobrança automática.</p>
+    <div class="btns" style="display:flex;flex-direction:column;gap:10px">
+      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener" onclick="trackCheckout('ANUAL')">Plano Anual — R$ 49/ano</a>
+      <a class="landing-cta" href="https://pay.kiwify.com.br/Yd9l2b4" target="_blank" rel="noopener" onclick="trackCheckout('VITALICIO')">Família Vitalício — R$ 95 único</a>
+    </div>
+    <div class="hint" style="margin-top:16px">Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber sua licença:
+      <div style="font-size:1.3rem;font-weight:700;letter-spacing:1px;margin-top:6px">${esc(codigo)}</div></div>
+  </div>`;
+  d.addEventListener('click', (e) => { if (e.target === d) d.remove(); });
+  document.body.appendChild(d);
+}
 function viewAvaliacaoBanner() {
   const dias = diasRestantesAvaliacao();
   if (dias === null) return '';
@@ -3124,7 +3146,7 @@ function viewAvaliacaoBanner() {
     : `Período de avaliação — faltam ${dias} dias`;
   return `<div class="avaliacao-banner">
     <span>${texto}</span>
-    <a href="https://index-landing-vercel.vercel.app/" target="_blank" rel="noopener">Ver planos</a>
+    <a href="#" onclick="verPlanos(event)">Ver planos</a>
   </div>`;
 }
 function isTrialExpiredNoLicense() {
