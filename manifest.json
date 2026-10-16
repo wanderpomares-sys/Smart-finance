@@ -1,10 +1,10 @@
 {
-  "id": "/Smart-finance/",
+  "id": "/",
   "name": "Smart Finance Family",
   "short_name": "Smart Finance",
   "description": "Gestão financeira familiar - importação de extratos, análise inteligente e backup criptografado",
-  "start_url": "/Smart-finance/index.html",
-  "scope": "/Smart-finance/",
+  "start_url": "/index.html",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#F4F6F8",
@@ -19,14 +19,14 @@
       "name": "Importar Extrato",
       "short_name": "Importar",
       "description": "Importar extrato bancário",
-      "url": "/Smart-finance/index.html?tab=importar",
+      "url": "/index.html?tab=importar",
       "icons": [{ "src": "icon-96-importar.png", "sizes": "96x96", "type": "image/png" }]
     },
     {
       "name": "Segurança",
       "short_name": "Segurança",
       "description": "Configurar PIN, senha e biometria",
-      "url": "/Smart-finance/index.html?tab=seguranca",
+      "url": "/index.html?tab=seguranca",
       "icons": [{ "src": "icon-96-seguranca.png", "sizes": "96x96", "type": "image/png" }]
     }
   ],
