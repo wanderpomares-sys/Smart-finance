@@ -1820,7 +1820,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-08-02';
+const SF_BUILD = '2026-10-13-01';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -5072,7 +5072,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { flushPendingSave(); checkAutoLock(); try { SFTelemetry.flush(); } catch (e) {} }
   });
-  window.addEventListener('pagehide', flushPendingSave);
+  window.addEventListener('pagehide', () => { flushPendingSave(); try { SFTelemetry.flush(); } catch (e) {} });
   window.addEventListener('beforeunload', flushPendingSave);
   try { SFTelemetry.track('session_start', sessionInfo()); SFTelemetry.flush(); } catch (e) {}
   limparServiceWorkerAntigo();
@@ -5144,8 +5144,10 @@ const SFTelemetry = (() => {
     } catch (e) {}
   }
 
-  function track(event, extra) { queue(event, extra); }
-  function trackOnce(event, extra) { if (hasFlag(event)) return; setFlag(event); queue(event, extra); }
+  let _ft = null;
+  function agendarFlush() { if (_ft) return; _ft = setTimeout(() => { _ft = null; try { flush(); } catch (e) {} }, 1500); }
+  function track(event, extra) { queue(event, extra); agendarFlush(); }
+  function trackOnce(event, extra) { if (hasFlag(event)) return; setFlag(event); queue(event, extra); agendarFlush(); }
 
   return { track, trackOnce, flush, getDeviceId };
 })();
