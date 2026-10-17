@@ -1891,7 +1891,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-17-05';
+const SF_BUILD = '2026-10-17-06';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -2377,7 +2377,7 @@ function viewImportar() {
   if (imp.step === 0) return `${err}<div class="card center">
     <h3>Escolha o extrato</h3>
     <p class="sub">PDF, CSV ou OFX. Eu leio o arquivo aqui no seu aparelho, descubro de qual conta ele é e mostro tudo para você confirmar antes de gravar.</p>
-    <label class="primary btn-file">${imp.busy ? 'Lendo…' : 'Selecionar arquivo'}<input type="file" accept=".pdf,.csv,.ofx,.txt" onchange="impFile(this.files[0])" ${imp.busy ? 'disabled' : ''}></label>
+    <label class="primary btn-file">${imp.busy ? 'Lendo…' : 'Selecionar arquivo'}<input type="file" onchange="impFile(this.files[0])" ${imp.busy ? 'disabled' : ''}></label>
   </div>`;
   if (imp.step === 1) return `${err}${viewConfirmacao()}`;
   if (imp.step === 2) {
@@ -2592,7 +2592,7 @@ function viewOnboardingImport() {
     <h2>Quer começar com um extrato?</h2>
     <p class="sub">É opcional. Se você tiver o PDF, CSV ou OFX do seu banco, o app organiza tudo sozinho. A leitura acontece aqui no seu aparelho — nada é enviado a lugar nenhum.</p>
     ${onboarding.error ? `<div class="error">${esc(onboarding.error)}</div>` : ''}
-    <input type="file" accept=".pdf,.csv,.ofx" ${onboarding.busy ? 'disabled' : ''} onchange="onboardingFile(this.files[0])">
+    <input type="file" ${onboarding.busy ? 'disabled' : ''} onchange="onboardingFile(this.files[0])">
     ${onboarding.busy ? '<div class="hint">Lendo o arquivo…</div>' : ''}
     <details class="hint" style="margin:12px 0 0">
       <summary style="cursor:pointer">Onde encontro meu extrato?</summary>
