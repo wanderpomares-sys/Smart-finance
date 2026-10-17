@@ -1820,7 +1820,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-13-01';
+const SF_BUILD = '2026-10-17-01';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3137,6 +3137,13 @@ function verPlanos(ev) {
   </div>`;
   d.addEventListener('click', (e) => { if (e.target === d) d.remove(); });
   document.body.appendChild(d);
+}
+function viewMigracaoBanner() {
+  try { if (!/github\.io$/i.test(location.hostname)) return ''; } catch (e) { return ''; }
+  return `<div class="avaliacao-banner" style="background:#F4D58D">
+    <span>📦 Vamos mudar para <b>smartfinancefamily.com.br</b>. Antes, faça um backup dos seus dados.</span>
+    <a href="#" onclick="setTab('seguranca');return false">Fazer backup</a>
+  </div>`;
 }
 function viewAvaliacaoBanner() {
   const dias = diasRestantesAvaliacao();
@@ -5031,6 +5038,7 @@ function render() {
   tutorialChecarProgresso();
   $('#view').innerHTML =
     viewAtualizacaoBanner()
+    + viewMigracaoBanner()
     + viewAvaliacaoBanner()
     + (storageOk ? '' : '<div class="error">Este navegador não permitiu salvar dados (modo de visualização?). Baixe o arquivo e abra direto no navegador do seu computador ou celular.</div>')
     + (health.error ? `<div class="error"><b>Seus dados NÃO foram salvos.</b><br>${esc(health.error)}</div>` : '')
