@@ -272,7 +272,10 @@ input[type=checkbox] { width:18px; height:18px; margin-top:2px; accent-color:var
     if(/^Movimenta..es$/i.test(x)){ativo=true;continue}
     if(/^O saldo l.quido corresponde/i.test(x)){fecha();ativo=false;continue}
     if(!ativo)continue;
-    let m=x.match(MES);
+    // data sozinha na linha (o PDF.js às vezes separa a data do 'Total de entradas/saídas'): só fixa o dia
+    let m=x.match(/^(\d{2}) (JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ) (\d{4})$/i);
+    if(m){fecha();data=m[3]+"-"+en[m[2].toUpperCase()]+"-"+m[1];g=null;continue}
+    m=x.match(MES);
     if(m){fecha();data=m[3]+"-"+en[m[2].toUpperCase()]+"-"+m[1];g=/^entr/i.test(m[4])?1:-1;cur={esperado:cents(m[6]),soma:0};continue}
     m=x.match(GRP);
     if(m){fecha();g=/^entr/i.test(m[1])?1:-1;cur={esperado:cents(m[3]),soma:0};continue}
@@ -1888,7 +1891,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-17-04';
+const SF_BUILD = '2026-10-17-05';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
