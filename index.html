@@ -251,7 +251,14 @@ input[type=checkbox] { width:18px; height:18px; margin-top:2px; accent-color:var
   const GRP=/^Total de (entradas|sa[ií]das) ([+\-−])\s*(\d{1,3}(?:\.\d{3})*,\d{2})$/i;
   const ITEM=/^(.+?)\s+(\d{1,3}(?:\.\d{3})*,\d{1,2})$/;
   const cents=(s)=>{const m=s.split(",");const f=(m[1]+"0").slice(0,2);return parseInt(m[0].replace(/\./g,""),10)*100+parseInt(f,10)};
-  const ls=e.map(x=>String(x).replace(/\s+/g," ").trim()).filter(Boolean);
+  const ls0=e.map(x=>String(x).replace(/\s+/g," ").trim()).filter(Boolean);
+  // o PDF.js pode quebrar "DD MES AAAA Total de entradas + 1,00" em várias linhas: remonta os pedaços
+  const ls=[];
+  for(const x of ls0){
+    const a=ls.length?ls[ls.length-1]:"";
+    if((/^\d{2} (JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ) \d{4}$/i.test(a)&&/^Total de (entradas|sa[ií]das)/i.test(x))||(/^(\d{2} (JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ) \d{4} )?Total de (entradas|sa[ií]das)( [+\-\u2212])?$/i.test(a)&&/^([+\-\u2212]\s*)?\d{1,3}(\.\d{3})*,\d{2}$|^[+\-\u2212]$/.test(x)))ls[ls.length-1]=a+" "+x;
+    else ls.push(x);
+  }
   if(!ls.some(x=>/^Saldo inicial\s+-?\d/i.test(x))||!ls.some(x=>MES.test(x)))return null;
   let abertura=null,fechamento=null,rend=0,ini=null,fim=null;
   const hdr=[];
@@ -1891,7 +1898,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-17-06';
+const SF_BUILD = '2026-10-17-07';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
