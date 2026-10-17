@@ -1888,7 +1888,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-17-02';
+const SF_BUILD = '2026-10-17-03';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3184,6 +3184,15 @@ function viewAtualizacaoBanner() {
     <a href="#" onclick="atualizarAgora();return false" style="color:#fff">Atualizar agora</a>
   </div>`;
 }
+const SF_CONTATO = 'contato@smartfinancefamily.com.br';
+/* Canal para o cliente enviar o comprovante e receber o arquivo .sflicense.
+   Mostra o endereço em texto também, porque o mailto: não abre em alguns
+   navegadores embutidos (ex.: dentro do Facebook). */
+function linkEnviarComprovante(codigo) {
+  const assunto = encodeURIComponent('Licença Smart Finance Family');
+  const corpo = encodeURIComponent('Código do aparelho: ' + codigo + '\nPlano pago: \n\n(anexe o comprovante de pagamento)');
+  return `<div style="margin-top:10px;font-size:.95rem">Envie para <a href="mailto:${SF_CONTATO}?subject=${assunto}&body=${corpo}"><b>${SF_CONTATO}</b></a> e você recebe o arquivo da licença de volta.</div>`;
+}
 function verPlanos(ev) {
   if (ev) ev.preventDefault();
   try { trackScreen('planos_modal'); } catch (e) {}
@@ -3201,7 +3210,7 @@ function verPlanos(ev) {
       <a class="landing-cta" href="https://pay.kiwify.com.br/Yd9l2b4" target="_blank" rel="noopener" onclick="trackCheckout('VITALICIO')">Família Vitalício — R$ 95 único</a>
     </div>
     <div class="hint" style="margin-top:16px">Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber sua licença:
-      <div style="font-size:1.3rem;font-weight:700;letter-spacing:1px;margin-top:6px">${esc(codigo)}</div></div>
+      <div style="font-size:1.3rem;font-weight:700;letter-spacing:1px;margin-top:6px">${esc(codigo)}</div>${linkEnviarComprovante(codigo)}</div>
   </div>`;
   d.addEventListener('click', (e) => { if (e.target === d) d.remove(); });
   document.body.appendChild(d);
@@ -3243,6 +3252,7 @@ function viewTrialExpired() {
     <div class="hint" style="margin-top:16px">
       Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber sua licença:
       <div style="font-size:1.3rem; font-weight:700; letter-spacing:1px; margin-top:6px">${esc(codigo)}</div>
+      ${linkEnviarComprovante(codigo)}
     </div>
     <div class="hint" style="margin-top:16px">Já recebeu o arquivo <code>.sflicense</code>? Envie aqui pra liberar:</div>
     <input type="file" accept=".sflicense" onchange="handleLicenseFile(this.files[0])">
@@ -3261,6 +3271,7 @@ function viewLicenseExpired() {
     <div class="hint" style="margin-top:16px">
       Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber a nova licença:
       <div style="font-size:1.3rem; font-weight:700; letter-spacing:1px; margin-top:6px">${esc(codigo)}</div>
+      ${linkEnviarComprovante(codigo)}
     </div>
     <div class="hint" style="margin-top:16px">Já recebeu um novo arquivo <code>.sflicense</code>? Envie aqui pra atualizar:</div>
     <input type="file" accept=".sflicense" onchange="handleLicenseFile(this.files[0])">
