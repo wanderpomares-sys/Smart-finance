@@ -1888,7 +1888,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-17-03';
+const SF_BUILD = '2026-10-17-04';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3394,12 +3394,17 @@ function viewMais() {
       <div class="grow"><div class="desc">Manual do usuário</div><div class="sub">Como usar cada tela do app, passo a passo</div></div>
       <div class="sub">↗</div>
     </div>`;
+  const contatoHtml = `<div class="row clickable-row" onclick="location.href='mailto:${SF_CONTATO}?subject=${encodeURIComponent('Smart Finance Family')}'">
+      <div class="menuico">💬</div>
+      <div class="grow"><div class="desc">Falar com a gente</div><div class="sub">${SF_CONTATO}</div></div>
+      <div class="sub">↗</div>
+    </div>`;
   return `<div class="card">${items.map(([k, ico, title, sub]) => `
     <div class="row clickable-row" onclick="setTab('${k}')">
       <div class="menuico">${ico}</div>
       <div class="grow"><div class="desc">${title}</div><div class="sub">${sub}</div></div>
       <div class="sub">›</div>
-    </div>`).join('')}${manualHtml}</div>`;
+    </div>`).join('')}${manualHtml}${contatoHtml}</div>`;
 }
 
 
