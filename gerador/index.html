@@ -108,6 +108,9 @@ button:disabled { opacity:.5; cursor:not-allowed; }
         <button id="btn-compartilhar" class="ghost" type="button">Compartilhar</button>
         <button id="btn-baixar" class="ghost" type="button">Baixar de novo</button>
       </div>
+      <button id="btn-copiar" class="gold" type="button">Copiar texto da licença</button>
+      <div class="hint">Se o download não aparecer, copie o texto e cole no app, em Segurança → Licença → "Ou cole aqui o texto da licença".</div>
+      <textarea id="lic-texto" readonly style="margin-top:8px"></textarea>
     </div>
   </section>
 
@@ -258,7 +261,7 @@ $('btn-gerar').onclick = async () => {
     guardarHist({ nome, codigo, plano: payload.plano, data: payload.data, obs });
     renderHist(); baixar();
     setMsg('emitir-msg', '✅ Licença gerada e conferida: ' + nomeArq, 'ok');
-    show('resultado', true);
+    $('lic-texto').value = arquivo; show('resultado', true);
   } catch (e) { setMsg('emitir-msg', '❌ ' + e.message, 'err'); show('resultado', false); }
 };
 
@@ -269,6 +272,11 @@ function baixar() {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 $('btn-baixar').onclick = baixar;
+$('btn-copiar').onclick = async () => {
+  if (!ultimoArquivo) return;
+  try { await navigator.clipboard.writeText(ultimoArquivo.texto); setMsg('emitir-msg', '✅ Texto da licença copiado. Cole no app.', 'ok'); }
+  catch (e) { const t = $('lic-texto'); t.focus(); t.select(); setMsg('emitir-msg', 'Selecionei o texto abaixo — use Copiar do teclado.', 'warn'); }
+};
 $('btn-compartilhar').onclick = async () => {
   if (!ultimoArquivo) return;
   try {

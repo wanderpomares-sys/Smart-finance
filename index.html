@@ -1898,7 +1898,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-20-01';
+const SF_BUILD = '2026-10-20-02';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3003,6 +3003,9 @@ function viewSeguranca() {
     ` : `
       <div class="hint">${S.createdAt ? 'Se você comprou um plano e recebeu um arquivo <code>.sflicense</code>, envie aqui pra liberar o app.' : 'Sua conta é anterior aos planos pagos: pode continuar usando sem licença. Se tiver um arquivo <code>.sflicense</code>, pode registrá-lo aqui.'}</div>
       <input type="file" accept="*/*" onchange="handleLicenseFile(this.files[0])">
+      <div class="hint" style="margin-top:12px">Ou cole aqui o texto da licença:</div>
+      <textarea id="license-paste" rows="4" style="width:100%;font-family:monospace;font-size:.8rem" placeholder='{"payload":{...},"assinatura":"..."}'></textarea>
+      <button class="ghost sm" style="margin-top:8px" onclick="handleLicenseText(document.getElementById('license-paste').value)">Registrar licença colada</button>
       <div id="license-status" style="margin-top:8px"></div>
     `}
     <div class="hint" style="margin-top:14px">Código deste aparelho — é ele que você informa pra receber a licença:</div>
@@ -3266,6 +3269,9 @@ function viewTrialExpired() {
     </div>
     <div class="hint" style="margin-top:16px">Já recebeu o arquivo <code>.sflicense</code>? Envie aqui pra liberar:</div>
     <input type="file" accept="*/*" onchange="handleLicenseFile(this.files[0])">
+      <div class="hint" style="margin-top:12px">Ou cole aqui o texto da licença:</div>
+      <textarea id="license-paste" rows="4" style="width:100%;font-family:monospace;font-size:.8rem" placeholder='{"payload":{...},"assinatura":"..."}'></textarea>
+      <button class="ghost sm" style="margin-top:8px" onclick="handleLicenseText(document.getElementById('license-paste').value)">Registrar licença colada</button>
     <div id="license-status" style="margin-top:8px"></div>
   </div>`;
 }
@@ -3285,6 +3291,9 @@ function viewLicenseExpired() {
     </div>
     <div class="hint" style="margin-top:16px">Já recebeu um novo arquivo <code>.sflicense</code>? Envie aqui pra atualizar:</div>
     <input type="file" accept="*/*" onchange="handleLicenseFile(this.files[0])">
+      <div class="hint" style="margin-top:12px">Ou cole aqui o texto da licença:</div>
+      <textarea id="license-paste" rows="4" style="width:100%;font-family:monospace;font-size:.8rem" placeholder='{"payload":{...},"assinatura":"..."}'></textarea>
+      <button class="ghost sm" style="margin-top:8px" onclick="handleLicenseText(document.getElementById('license-paste').value)">Registrar licença colada</button>
     <div id="license-status" style="margin-top:8px"></div>
   </div>`;
 }
@@ -3317,7 +3326,15 @@ async function handleLicenseFile(file) {
   if (!file) return;
   try {
     const text = await file.text();
-    const { payload, assinatura } = JSON.parse(text);
+    return await handleLicenseText(text);
+  } catch (e) {
+    statusEl.innerHTML = '❌ Não consegui ler esse arquivo: ' + esc(e.message);
+  }
+}
+async function handleLicenseText(text) {
+  const statusEl = document.getElementById('license-status');
+  try {
+    const { payload, assinatura } = JSON.parse(String(text || '').trim());
     if (!payload || !assinatura) throw new Error('Arquivo de licença mal formado.');
     const publicKey = await crypto.subtle.importKey('jwk', SF_LICENSE_PUBKEY, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['verify']);
     const enc = new TextEncoder().encode(JSON.stringify(payload));
