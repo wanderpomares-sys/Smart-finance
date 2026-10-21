@@ -1898,7 +1898,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-20-02';
+const SF_BUILD = '2026-10-20-03';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -2023,7 +2023,10 @@ function dateAfterKeyword(flatText, keyword, maxGap = 15) {
     from = idx + keyword.length;
   }
 }
-const CARD_ENTRY_RE = new RegExp('(\\d{2}\\/\\d{2})[ \\t]+([^\\n]*?)(' + MONEY_LOOSE_SRC + ')(?=\\s|$)', 'g');
+/* O PDF.js às vezes solta espaço dentro da data ("09/ 08"). A data tolera esse espaço e a
+   descrição precisa ter ao menos 1 caractere — senão uma parcela "02/12 89,90" virava um
+   lançamento fantasma sem descrição e o pareamento compra × cancelamento furava. */
+const CARD_ENTRY_RE = new RegExp('(\\d{2}\\/\\s?\\d{2})[ \\t]+([^\\n]+?)(' + MONEY_LOOSE_SRC + ')(?=\\s|$)', 'g');
 function extractCardEntries(pool) {
   const out = [];
   pool.forEach((line, i) => {
@@ -2031,7 +2034,7 @@ function extractCardEntries(pool) {
     let m;
     CARD_ENTRY_RE.lastIndex = 0;
     while ((m = CARD_ENTRY_RE.exec(line))) {
-      out.push({ dateBr: m[1], descRaw: m[2].replace(/\s+/g, ' ').trim(), valueCents: parseLooseMoney(m[3]), lineIndex: i });
+      out.push({ dateBr: m[1].replace(/\s+/g, ''), descRaw: m[2].replace(/\s+/g, ' ').trim(), valueCents: parseLooseMoney(m[3]), lineIndex: i });
     }
   });
   return out;
