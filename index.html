@@ -1898,7 +1898,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-20-03';
+const SF_BUILD = '2026-10-20-04';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -2063,36 +2063,51 @@ function parseCardInvoiceLines(lines) {
   const idxEncargos = findMarkerLine(lines, 'ENCARGOSCOBRADOSNESTAFATURA', idxAtuais + 1);
   const poolEnd = idxEncargos >= 0 ? idxEncargos : lines.length;
 
-  const allEntries = extractCardEntries(lines.slice(idxAtuais, poolEnd))
-    .filter((e) => !normNoSpace(e.descRaw).includes('PAGAMENTOVIACONTA'));
-
-  // anula pares de valor exatamente oposto (compra + cancelamento na mesma fatura)
-  const groups = new Map();
-  allEntries.forEach((e, idx) => {
-    const abs = Math.abs(e.valueCents);
-    if (!groups.has(abs)) groups.set(abs, []);
-    groups.get(abs).push({ idx, sign: Math.sign(e.valueCents) });
-  });
-  const netted = new Set();
-  let nettedTotal = 0, nettedPairs = 0;
-  for (const [abs, arr] of groups) {
-    const pos = arr.filter((x) => x.sign > 0), neg = arr.filter((x) => x.sign < 0);
-    const n = Math.min(pos.length, neg.length);
-    for (let i = 0; i < n; i++) { netted.add(pos[i].idx); netted.add(neg[i].idx); nettedTotal += abs; nettedPairs++; }
-  }
-  const survivors = allEntries.filter((e, idx) => !netted.has(idx) && e.descRaw && e.valueCents !== 0);
-
-  // dos sobreviventes, separa quem bate com o valor da "próxima fatura" (parcela futura já conhecida)
-  const usedAsFuture = new Set();
-  if (proximaFaturaTotal != null) {
-    const firstMatch = survivors.findIndex((e) => e.valueCents === proximaFaturaTotal);
-    if (firstMatch >= 0) usedAsFuture.add(firstMatch);
-  }
-  const currentEntries = [], futureEntries = [];
-  survivors.forEach((e, idx) => (usedAsFuture.has(idx) ? futureEntries : currentEntries).push(e));
-
-  const sumCurrent = currentEntries.reduce((a, e) => a + e.valueCents, 0);
   const checkTotal = totalLancamentosAtuais ?? totalFatura;
+  /* Lê os lançamentos entre o início da seção e a linha `end`. O PDF tem duas colunas e
+     o PDF.js as intercala: o título "Encargos cobrados nesta fatura" (coluna da direita)
+     pode cair NO MEIO da lista de lançamentos (coluna da esquerda). Por isso, se o corte
+     no marcador não fecha com o total impresso, alarga o corte linha a linha e fica com
+     o menor que fecha — a soma batendo é o que valida a leitura. */
+  function readPool(end) {
+    const allEntries = extractCardEntries(lines.slice(idxAtuais, end))
+      .filter((e) => !normNoSpace(e.descRaw).includes('PAGAMENTOVIACONTA'));
+
+    // anula pares de valor exatamente oposto (compra + cancelamento na mesma fatura)
+    const groups = new Map();
+    allEntries.forEach((e, idx) => {
+      const abs = Math.abs(e.valueCents);
+      if (!groups.has(abs)) groups.set(abs, []);
+      groups.get(abs).push({ idx, sign: Math.sign(e.valueCents) });
+    });
+    const netted = new Set();
+    let nettedTotal = 0, nettedPairs = 0;
+    for (const [abs, arr] of groups) {
+      const pos = arr.filter((x) => x.sign > 0), neg = arr.filter((x) => x.sign < 0);
+      const n = Math.min(pos.length, neg.length);
+      for (let i = 0; i < n; i++) { netted.add(pos[i].idx); netted.add(neg[i].idx); nettedTotal += abs; nettedPairs++; }
+    }
+    const survivors = allEntries.filter((e, idx) => !netted.has(idx) && e.descRaw && e.valueCents !== 0);
+
+    // dos sobreviventes, separa quem bate com o valor da "próxima fatura" (parcela futura já conhecida)
+    const usedAsFuture = new Set();
+    if (proximaFaturaTotal != null) {
+      const firstMatch = survivors.findIndex((e) => e.valueCents === proximaFaturaTotal);
+      if (firstMatch >= 0) usedAsFuture.add(firstMatch);
+    }
+    const currentEntries = [], futureEntries = [];
+    survivors.forEach((e, idx) => (usedAsFuture.has(idx) ? futureEntries : currentEntries).push(e));
+    const sumCurrent = currentEntries.reduce((a, e) => a + e.valueCents, 0);
+    return { currentEntries, futureEntries, sumCurrent, nettedTotal, nettedPairs };
+  }
+  let pool = readPool(poolEnd);
+  if (checkTotal != null && pool.sumCurrent !== checkTotal) {
+    for (let end = poolEnd + 1; end <= lines.length; end++) {
+      const alt = readPool(end);
+      if (alt.sumCurrent === checkTotal) { pool = alt; break; }
+    }
+  }
+  const { currentEntries, futureEntries, sumCurrent, nettedTotal, nettedPairs } = pool;
   const diagnostics = [];
   let confidence;
   if (checkTotal != null && sumCurrent === checkTotal) {
