@@ -1898,7 +1898,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-17-07';
+const SF_BUILD = '2026-10-20-01';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3002,7 +3002,7 @@ function viewSeguranca() {
       <div class="hint">✅ Licença registrada — <b>${esc(S.license.nome)}</b>, plano ${esc(SF_PLANO_LABEL[S.license.plano] || S.license.plano)}, ${S.license.plano === 'CORTESIA' ? 'concedida' : 'comprada'} em ${fmtDate(S.license.data)}.${S.license.observacao ? ` <span class="sub">(${esc(S.license.observacao)})</span>` : ''}</div>
     ` : `
       <div class="hint">${S.createdAt ? 'Se você comprou um plano e recebeu um arquivo <code>.sflicense</code>, envie aqui pra liberar o app.' : 'Sua conta é anterior aos planos pagos: pode continuar usando sem licença. Se tiver um arquivo <code>.sflicense</code>, pode registrá-lo aqui.'}</div>
-      <input type="file" accept=".sflicense" onchange="handleLicenseFile(this.files[0])">
+      <input type="file" accept="*/*" onchange="handleLicenseFile(this.files[0])">
       <div id="license-status" style="margin-top:8px"></div>
     `}
     <div class="hint" style="margin-top:14px">Código deste aparelho — é ele que você informa pra receber a licença:</div>
@@ -3265,7 +3265,7 @@ function viewTrialExpired() {
       ${linkEnviarComprovante(codigo)}
     </div>
     <div class="hint" style="margin-top:16px">Já recebeu o arquivo <code>.sflicense</code>? Envie aqui pra liberar:</div>
-    <input type="file" accept=".sflicense" onchange="handleLicenseFile(this.files[0])">
+    <input type="file" accept="*/*" onchange="handleLicenseFile(this.files[0])">
     <div id="license-status" style="margin-top:8px"></div>
   </div>`;
 }
@@ -3284,7 +3284,7 @@ function viewLicenseExpired() {
       ${linkEnviarComprovante(codigo)}
     </div>
     <div class="hint" style="margin-top:16px">Já recebeu um novo arquivo <code>.sflicense</code>? Envie aqui pra atualizar:</div>
-    <input type="file" accept=".sflicense" onchange="handleLicenseFile(this.files[0])">
+    <input type="file" accept="*/*" onchange="handleLicenseFile(this.files[0])">
     <div id="license-status" style="margin-top:8px"></div>
   </div>`;
 }
