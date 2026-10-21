@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#14263D">
+<meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SF Licenças">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<title>SF Licenças</title>
+<style>
+:root { --ink:#14263D; --brass:#B98A2F; --pos:#1E7D5A; --neg:#C0392B; --neutral:#5A6B7F; --bg:#F4F6F8; }
+* { box-sizing:border-box; margin:0; }
+body { font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:#1B2A3A; font-size:17px; padding-bottom:env(safe-area-inset-bottom); }
+header { background:var(--ink); color:#fff; padding:calc(14px + env(safe-area-inset-top)) 16px 14px; display:flex; align-items:center; gap:12px; }
+header img { width:36px; height:36px; border-radius:8px; }
+header h1 { font-size:1.1rem; font-weight:700; }
+header small { display:block; color:#C9D3DF; font-weight:400; font-size:.78rem; }
+main { max-width:520px; margin:0 auto; padding:16px; display:flex; flex-direction:column; gap:14px; }
+.card { background:#fff; border-radius:14px; padding:16px; box-shadow:0 1px 3px rgba(20,38,61,.12); }
+h2 { font-size:1.02rem; color:var(--ink); margin-bottom:10px; }
+label { display:block; font-size:.85rem; color:var(--neutral); margin:12px 0 4px; font-weight:600; }
+input, select, textarea { width:100%; font:inherit; padding:11px 12px; border:1px solid #CBD5E0; border-radius:10px; background:#fff; color:inherit; }
+input:focus, select:focus, textarea:focus { outline:2px solid var(--brass); border-color:var(--brass); }
+#codigo { font-size:1.35rem; font-weight:700; letter-spacing:2px; text-transform:uppercase; text-align:center; }
+textarea { min-height:90px; font-family:ui-monospace,Menlo,monospace; font-size:.8rem; }
+button { font:inherit; font-weight:700; border:0; border-radius:10px; padding:13px 16px; cursor:pointer; background:var(--ink); color:#fff; width:100%; margin-top:12px; }
+button.gold { background:var(--brass); color:var(--ink); }
+button.ghost { background:#EDF1F5; color:var(--ink); }
+button.danger { background:#fff; color:var(--neg); border:1px solid var(--neg); }
+button:disabled { opacity:.5; cursor:not-allowed; }
+.row { display:flex; gap:10px; } .row > * { flex:1; }
+.msg { margin-top:10px; font-size:.92rem; line-height:1.4; }
+.ok { color:var(--pos); } .err { color:var(--neg); } .warn { color:#8a6212; }
+.hint { font-size:.82rem; color:var(--neutral); margin-top:6px; line-height:1.4; }
+.hist-item { display:flex; justify-content:space-between; gap:10px; padding:9px 0; border-top:1px solid #E5EAF0; font-size:.88rem; }
+.hist-item:first-of-type { border-top:0; }
+.hist-item b { color:var(--ink); } .hist-item span { color:var(--neutral); text-align:right; }
+.hidden { display:none !important; }
+#install-bar { background:var(--brass); color:var(--ink); padding:10px 16px; font-weight:600; font-size:.9rem; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+#install-bar button { width:auto; margin:0; padding:7px 14px; background:var(--ink); color:#fff; }
+</style>
+</head>
+<body>
+<div id="install-bar" class="hidden"><span>Instale o gerador neste aparelho</span><button id="btn-install">Instalar</button></div>
+<header>
+  <img src="/icon-192.png" alt="">
+  <h1>SF Licenças<small>Emissor de licenças · Smart Finance Family</small></h1>
+</header>
+<main>
+
+  <!-- ===== Chave privada ===== -->
+  <section class="card" id="card-chave">
+    <h2>🔑 Chave de assinatura</h2>
+    <div id="chave-vazia">
+      <div class="hint" style="margin-top:0">Cole aqui a sua <b>chave privada</b> (JWK, o mesmo JSON do gerador antigo). Ela fica guardada <b>só neste aparelho</b>, protegida por uma senha que você escolher. Nunca é enviada a lugar nenhum.</div>
+      <label for="jwk">Chave privada (JWK)</label>
+      <textarea id="jwk" spellcheck="false" autocomplete="off" placeholder='{"kty":"EC","crv":"P-256","x":"...","y":"...","d":"..."}'></textarea>
+      <input type="file" id="jwk-file" accept=".json,.jwk,application/json" class="hidden">
+      <button class="ghost" id="btn-jwk-file" type="button">Ou escolher arquivo…</button>
+      <label for="senha-nova">Senha para proteger a chave neste aparelho</label>
+      <input type="password" id="senha-nova" autocomplete="new-password" placeholder="mín. 8 caracteres">
+      <button id="btn-guardar" class="gold">Guardar chave</button>
+    </div>
+    <div id="chave-trancada" class="hidden">
+      <div class="hint" style="margin-top:0">Chave guardada. Digite a senha para liberar a emissão.</div>
+      <label for="senha-abrir">Senha</label>
+      <input type="password" id="senha-abrir" autocomplete="current-password">
+      <button id="btn-abrir" class="gold">Destrancar</button>
+      <button id="btn-esquecer1" class="danger" type="button">Apagar chave deste aparelho</button>
+    </div>
+    <div id="chave-aberta" class="hidden">
+      <div class="msg ok" style="margin-top:0">✅ Chave liberada e conferida com a chave pública do app.</div>
+      <div class="row">
+        <button id="btn-trancar" class="ghost" type="button">Trancar</button>
+        <button id="btn-esquecer2" class="danger" type="button">Apagar chave</button>
+      </div>
+    </div>
+    <div id="chave-msg" class="msg"></div>
+  </section>
+
+  <!-- ===== Emissão ===== -->
+  <section class="card hidden" id="card-emitir">
+    <h2>📄 Nova licença</h2>
+    <label for="nome">Nome do cliente</label>
+    <input id="nome" autocomplete="off" placeholder="Ex.: Maria Silva">
+    <label for="codigo">Código do aparelho</label>
+    <input id="codigo" autocomplete="off" autocapitalize="characters" maxlength="9" placeholder="XXXX-XXXX">
+    <div class="hint">O cliente vê esse código no app, em Segurança → Licença. Formato: 4 + 4 caracteres.</div>
+    <label for="plano">Plano</label>
+    <select id="plano">
+      <option value="VITALICIO">Família Vitalício</option>
+      <option value="ANUAL">Anual (vence em 365 dias)</option>
+      <option value="CORTESIA">Cortesia (gratuito)</option>
+    </select>
+    <label for="data">Data da licença</label>
+    <input type="date" id="data">
+    <label for="obs">Observação (opcional)</label>
+    <input id="obs" autocomplete="off" placeholder="Ex.: Kiwify pedido #1234">
+    <button id="btn-gerar" class="gold">Gerar licença (.sflicense)</button>
+    <div id="emitir-msg" class="msg"></div>
+    <div id="resultado" class="hidden">
+      <div class="row">
+        <button id="btn-compartilhar" class="ghost" type="button">Compartilhar</button>
+        <button id="btn-baixar" class="ghost" type="button">Baixar de novo</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Histórico ===== -->
+  <section class="card hidden" id="card-hist">
+    <h2>🕘 Emitidas neste aparelho</h2>
+    <div id="hist"></div>
+    <button id="btn-limpar-hist" class="ghost" type="button">Limpar histórico</button>
+  </section>
+
+</main>
+
+<script>
+'use strict';
+/* Chave pública embutida no app (index.html → SF_LICENSE_PUBKEY). A licença só é aceita
+   se for assinada pela chave privada correspondente a esta. */
+const PUBKEY = { key_ops: ['verify'], ext: true, kty: 'EC',
+  x: 'qdfUehsWMwd5OVo9k0zgF1GHgEVuoLChzlaDC8HuGCI', y: 'RktXdDT4i7N4Iry8DmISwym5RS5E7xf6_86EyvhJ-1Q', crv: 'P-256' };
+const ALFABETO = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/;
+const DB_NAME = 'sf-licencas', DB_STORE = 'kv';
+const LS_HIST = 'sf-licencas-hist';
+
+const $ = (id) => document.getElementById(id);
+const show = (id, on) => $(id).classList.toggle('hidden', !on);
+const setMsg = (id, html, cls) => { const el = $(id); el.className = 'msg ' + (cls || ''); el.textContent = html; };
+
+/* ---------- base64url ---------- */
+const toB64 = (buf) => { const b = new Uint8Array(buf); let s = ''; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode.apply(null, b.subarray(i, i + 8192)); return btoa(s); };
+const toB64url = (buf) => toB64(buf).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fromB64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+function fromB64url(s) { const pad = s.length % 4 ? '='.repeat(4 - (s.length % 4)) : ''; return fromB64(s.replace(/-/g, '+').replace(/_/g, '/') + pad); }
+
+/* ---------- IndexedDB (guarda a chave já criptografada) ---------- */
+function db() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(DB_STORE);
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function kvGet(k) { const d = await db(); return new Promise((res, rej) => { const q = d.transaction(DB_STORE).objectStore(DB_STORE).get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function kvSet(k, v) { const d = await db(); return new Promise((res, rej) => { const t = d.transaction(DB_STORE, 'readwrite'); t.objectStore(DB_STORE).put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+async function kvDel(k) { const d = await db(); return new Promise((res, rej) => { const t = d.transaction(DB_STORE, 'readwrite'); t.objectStore(DB_STORE).delete(k); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+
+/* ---------- proteção da chave com senha (PBKDF2 → AES-GCM) ---------- */
+async function derivar(senha, salt) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(senha), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 300000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function trancar(jwk, senha) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await derivar(senha, salt), new TextEncoder().encode(JSON.stringify(jwk)));
+  return { v: 1, salt: toB64(salt), iv: toB64(iv), ct: toB64(ct) };
+}
+async function destrancar(pacote, senha) {
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(pacote.iv) }, await derivar(senha, fromB64(pacote.salt)), fromB64(pacote.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+/* ---------- chave privada ---------- */
+let privateKey = null;      // CryptoKey na memória, só enquanto destrancada
+let ultimoArquivo = null;   // { nome, texto } da última licença gerada
+
+function validarJwkPrivada(jwk) {
+  if (!jwk || jwk.kty !== 'EC' || jwk.crv !== 'P-256' || !jwk.d || !jwk.x || !jwk.y) throw new Error('Isso não parece uma chave privada EC P-256 (faltam kty/crv/x/y/d).');
+  if (jwk.x !== PUBKEY.x || jwk.y !== PUBKEY.y) throw new Error('Essa chave NÃO corresponde à chave pública do app — as licenças geradas seriam recusadas. Confira se é a chave certa.');
+}
+async function importarPrivada(jwk) {
+  validarJwkPrivada(jwk);
+  const limpa = { kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y, d: jwk.d, ext: true };
+  return crypto.subtle.importKey('jwk', limpa, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+}
+function lerJwk(texto) {
+  let o; try { o = JSON.parse(texto.trim()); } catch (e) { throw new Error('O texto colado não é um JSON válido.'); }
+  return o.privateKey && o.privateKey.d ? o.privateKey : o; // aceita {publicKey, privateKey} também
+}
+
+async function atualizarTelaChave() {
+  const guardada = await kvGet('chave');
+  const aberta = !!privateKey;
+  show('chave-vazia', !guardada && !aberta);
+  show('chave-trancada', !!guardada && !aberta);
+  show('chave-aberta', aberta);
+  show('card-emitir', aberta); show('card-hist', aberta);
+  if (aberta) renderHist();
+}
+
+$('btn-jwk-file').onclick = () => $('jwk-file').click();
+$('jwk-file').onchange = async (e) => { const f = e.target.files[0]; if (f) $('jwk').value = await f.text(); };
+
+$('btn-guardar').onclick = async () => {
+  try {
+    const jwk = lerJwk($('jwk').value), senha = $('senha-nova').value;
+    if (senha.length < 8) throw new Error('A senha precisa ter pelo menos 8 caracteres.');
+    const key = await importarPrivada(jwk);           // valida e confere com a chave pública
+    await kvSet('chave', await trancar(jwk, senha));
+    privateKey = key; $('jwk').value = ''; $('senha-nova').value = '';
+    setMsg('chave-msg', '', ''); await atualizarTelaChave();
+  } catch (e) { setMsg('chave-msg', '❌ ' + e.message, 'err'); }
+};
+$('btn-abrir').onclick = async () => {
+  try {
+    const pacote = await kvGet('chave');
+    let jwk; try { jwk = await destrancar(pacote, $('senha-abrir').value); } catch (e) { throw new Error('Senha incorreta.'); }
+    privateKey = await importarPrivada(jwk);
+    $('senha-abrir').value = ''; setMsg('chave-msg', '', ''); await atualizarTelaChave();
+  } catch (e) { setMsg('chave-msg', '❌ ' + e.message, 'err'); }
+};
+$('senha-abrir').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-abrir').click(); });
+$('btn-trancar').onclick = async () => { privateKey = null; ultimoArquivo = null; show('resultado', false); setMsg('emitir-msg', '', ''); await atualizarTelaChave(); };
+async function apagarChave() {
+  if (!confirm('Apagar a chave deste aparelho? Você precisará colar a chave privada de novo para emitir licenças.')) return;
+  await kvDel('chave'); privateKey = null; ultimoArquivo = null; await atualizarTelaChave();
+}
+$('btn-esquecer1').onclick = apagarChave; $('btn-esquecer2').onclick = apagarChave;
+
+/* ---------- emissão ---------- */
+$('data').value = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+$('codigo').addEventListener('input', (e) => {
+  let v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (v.length > 4) v = v.slice(0, 4) + '-' + v.slice(4, 8);
+  e.target.value = v;
+});
+
+$('btn-gerar').onclick = async () => {
+  try {
+    if (!privateKey) throw new Error('Destrave a chave primeiro.');
+    const nome = $('nome').value.trim(), codigo = $('codigo').value.trim().toUpperCase();
+    if (!nome) throw new Error('Informe o nome do cliente.');
+    if (!ALFABETO.test(codigo)) throw new Error('Código inválido. Use o formato XXXX-XXXX (sem as letras O, I e os números 0, 1).');
+    const dataStr = $('data').value; if (!dataStr) throw new Error('Informe a data da licença.');
+    const payload = { nome, plano: $('plano').value, data: new Date(dataStr + 'T12:00:00').toISOString(), deviceId: codigo };
+    const obs = $('obs').value.trim(); if (obs) payload.observacao = obs;
+
+    // O app confere assinando/verificando exatamente JSON.stringify(payload).
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privateKey, bytes);
+    const arquivo = JSON.stringify({ payload, assinatura: toB64url(sig) }, null, 2);
+
+    // Autoconferência com a mesma lógica do app antes de entregar.
+    const pub = await crypto.subtle.importKey('jwk', PUBKEY, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['verify']);
+    const lido = JSON.parse(arquivo);
+    const ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, fromB64url(lido.assinatura), new TextEncoder().encode(JSON.stringify(lido.payload)));
+    if (!ok) throw new Error('A assinatura gerada não passou na conferência. Nada foi entregue.');
+
+    const nomeArq = 'licenca-' + codigo + '.sflicense';
+    ultimoArquivo = { nome: nomeArq, texto: arquivo };
+    guardarHist({ nome, codigo, plano: payload.plano, data: payload.data, obs });
+    renderHist(); baixar();
+    setMsg('emitir-msg', '✅ Licença gerada e conferida: ' + nomeArq, 'ok');
+    show('resultado', true);
+  } catch (e) { setMsg('emitir-msg', '❌ ' + e.message, 'err'); show('resultado', false); }
+};
+
+function baixar() {
+  if (!ultimoArquivo) return;
+  const url = URL.createObjectURL(new Blob([ultimoArquivo.texto], { type: 'application/octet-stream' }));
+  const a = document.createElement('a'); a.href = url; a.download = ultimoArquivo.nome; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+$('btn-baixar').onclick = baixar;
+$('btn-compartilhar').onclick = async () => {
+  if (!ultimoArquivo) return;
+  try {
+    const f = new File([ultimoArquivo.texto], ultimoArquivo.nome, { type: 'application/octet-stream' });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) await navigator.share({ files: [f], title: 'Licença Smart Finance Family' });
+    else { baixar(); setMsg('emitir-msg', 'Este aparelho não compartilha arquivos direto — o arquivo foi baixado, é só anexar.', 'warn'); }
+  } catch (e) { if (e.name !== 'AbortError') setMsg('emitir-msg', '❌ ' + e.message, 'err'); }
+};
+
+/* ---------- histórico local (só nome, código, plano e data — nunca a chave) ---------- */
+function lerHist() { try { return JSON.parse(localStorage.getItem(LS_HIST) || '[]'); } catch (e) { return []; } }
+function guardarHist(item) { try { const h = lerHist(); h.unshift(item); localStorage.setItem(LS_HIST, JSON.stringify(h.slice(0, 50))); } catch (e) {} }
+const ROTULO = { ANUAL: 'Anual', VITALICIO: 'Vitalício', CORTESIA: 'Cortesia' };
+function renderHist() {
+  const h = lerHist(), box = $('hist'); box.textContent = '';
+  if (!h.length) { const p = document.createElement('div'); p.className = 'hint'; p.textContent = 'Nenhuma licença emitida ainda.'; box.appendChild(p); return; }
+  h.forEach((i) => {
+    const row = document.createElement('div'); row.className = 'hist-item';
+    const l = document.createElement('div'); const b = document.createElement('b'); b.textContent = i.nome; l.appendChild(b);
+    l.appendChild(document.createElement('br')); l.appendChild(document.createTextNode(i.codigo + (i.obs ? ' · ' + i.obs : '')));
+    const r = document.createElement('span'); r.textContent = (ROTULO[i.plano] || i.plano) + ' · ' + new Date(i.data).toLocaleDateString('pt-BR');
+    row.appendChild(l); row.appendChild(r); box.appendChild(row);
+  });
+}
+$('btn-limpar-hist').onclick = () => { if (confirm('Limpar o histórico deste aparelho?')) { try { localStorage.removeItem(LS_HIST); } catch (e) {} renderHist(); } };
+
+/* ---------- instalação (PWA) ---------- */
+let eventoInstalar = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); eventoInstalar = e; show('install-bar', true); });
+$('btn-install').onclick = async () => { if (!eventoInstalar) return; eventoInstalar.prompt(); await eventoInstalar.userChoice; eventoInstalar = null; show('install-bar', false); };
+window.addEventListener('appinstalled', () => show('install-bar', false));
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+atualizarTelaChave().catch((e) => setMsg('chave-msg', '❌ Armazenamento indisponível neste navegador: ' + e.message, 'err'));
+</script>
+</body>
+</html>
