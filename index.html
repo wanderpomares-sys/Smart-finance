@@ -308,7 +308,53 @@ input[type=checkbox] { width:18px; height:18px; margin-top:2px; accent-color:var
   if(grupos.length)diag.push(gOk===grupos.length?"Todos os "+grupos.length+" totais diários de entradas e saídas do extrato foram reproduzidos.":gOk+" de "+grupos.length+" totais diários conferem com o extrato.");
   return{strategy:q,parsed:{txs,meta,dailyBalances:[]},confidence:Math.max(0,Math.min(1,score/100)),checks:{closingOk:alvo==null?null:ok,dailyOk:gOk,dailyTotal:grupos.length,txCount:txs.length},diagnostics:diag,trustworthy:score>=90&&txs.length>0};
 }
-function mn(e,t){let nbk=null;try{nbk=nubankConta(e,t)}catch(_){}if(nbk)return nbk;let n=null,o=(r,i)=>{let{score:a,checks:c}=un(i,t),l={strategy:r,parsed:i,confidence:Math.max(0,Math.min(1,a/100)),checks:c,diagnostics:[],trustworthy:!1};(!n||a>n.confidence*100||a===n.confidence*100&&i.txs.length>n.parsed.txs.length)&&(n=l)};try{o(q,fe(e))}catch{}for(let r of Ge)try{o(r,J(e,r))}catch{continue}let s=n??{strategy:q,parsed:J(e,q),confidence:0,checks:{closingOk:null,dailyOk:0,dailyTotal:0,txCount:0},diagnostics:[],trustworthy:!1};return s.diagnostics=fn(s,t),s.trustworthy=s.confidence>=.9&&s.checks.txCount>0,s}function fn(e,t){let n=[],{checks:o,parsed:s}=e;return o.txCount?(n.push(`${o.txCount} lan\xE7amento(s) reconhecido(s).`),o.closingOk===!0?n.push("Os lan\xE7amentos lidos reproduzem exatamente o saldo final informado pelo banco."):o.closingOk===!1?n.push("Os lan\xE7amentos lidos N\xC3O fecham com o saldo informado pelo banco \u2014 pode faltar algum lan\xE7amento ou algum sinal estar invertido."):t==null&&s.meta.closingBalance==null&&n.push("Este arquivo n\xE3o informa saldo, ent\xE3o n\xE3o h\xE1 como conferir a leitura automaticamente. Informe o saldo final impresso no extrato para eu validar."),o.dailyTotal&&n.push(o.dailyOk===o.dailyTotal?`Todos os ${o.dailyTotal} saldos di\xE1rios do extrato foram reproduzidos.`:`${o.dailyOk} de ${o.dailyTotal} saldos di\xE1rios conferem \u2014 a diverg\xEAncia come\xE7a onde o primeiro deles falha.`),e.strategy.signMode==="balanceDelta"&&n.push("Neste layout, d\xE9bito e cr\xE9dito ficam em colunas separadas: o sinal foi deduzido da varia\xE7\xE3o do saldo."),e.strategy.signMode==="invertExplicit"&&n.push("Neste layout os sinais aparecem invertidos em rela\xE7\xE3o ao habitual; a leitura foi ajustada."),e.strategy.lastIsBalance||n.push("Este layout n\xE3o traz coluna de saldo por linha."),n):o.closingOk===!0?(n.push("Nenhuma movimenta\xE7\xE3o neste per\xEDodo \u2014 e o saldo informado pelo banco confere, ent\xE3o a leitura est\xE1 correta."),n):(n.push("Nenhum lan\xE7amento reconhecido neste arquivo. Pode ser um extrato digitalizado (imagem) ou um layout muito diferente."),n)}var pn=[{institution:"MERCADO_PAGO",re:/MERCADO\s*PAGO|MERCADOPAGO|10\.?573\.?521\/0001-91/i,weight:3},{institution:"NUBANK",re:/\bNUBANK\b|NU\s*PAGAMENTOS|NU\s*FINANCEIRA|18\.?236\.?120\/0001-58/i,weight:3},{institution:"PICPAY",re:/\bPICPAY\b|PIC\s*PAY|22\.?896\.?431\/0001-10/i,weight:3},{institution:"BRADESCO",re:/\bBRADESCO\b|60\.?746\.?948\/0001-12/i,weight:3},{institution:"ITAU",re:/\bITA[UÚ]\b|ITAU\s*UNIBANCO|60\.?701\.?190\/0001-04/i,weight:3},{institution:"SANTANDER",re:/\bSANTANDER\b|90\.?400\.?888\/0001-42/i,weight:3}],hn=new Set(["10573521000191","18236120000158","22896431000110","60746948000112","60701190000104","90400888000142"]),An=e=>e.replace(/\D/g,""),gn=/OUVIDORIA|\bSAC\b|CENTRAL DE ATENDIMENTO|ATENDIMENTO AO CLIENTE|\b0800\b|BANCO CENTRAL DO BRASIL|\bCVM\b|INSTITUI[ÇC][ÃA]O DE (PAGAMENTO|FINANCEIRA)|CORRESPONDENTE BANC[AÁ]RIO/i,pe=/Ag[êe]ncia:\s*\S|Conta:\s*\S|Transfer[êe]ncia (enviada|recebida) pelo Pix/i;function je(e){let t=e.slice(0,40).join(`
+function itauContaExtrato(e,t){
+  const ls=e.map(x=>String(x).replace(/\s+/g," ").trim()).filter(Boolean);
+  if(!ls.some(x=>/^extrato conta \/ lan.amentos/i.test(x)))return null;
+  const MONEY="(-?\\d{1,3}(?:\\.\\d{3})*,\\d{2})";
+  const SALDO=new RegExp("^(\\d{2})/(\\d{2})/(\\d{4}) SALDO DO DIA "+MONEY+"$","i");
+  const ROW=new RegExp("^(\\d{2})/(\\d{2})/(\\d{4}) (.+?) "+MONEY+"$");
+  const cents=(s)=>{const n=s.startsWith("-");const m=s.replace("-","").split(",");const c=parseInt(m[0].replace(/\./g,""),10)*100+parseInt(m[1],10);return n?-c:c};
+  const iso=(d,m,y)=>y+"-"+m+"-"+d;
+  const saldos=[],txs=[];
+  let ini=null,fim=null,saldoConta=null;
+  for(let i=0;i<ls.length;i++){
+    const x=ls[i];let m;
+    if((m=x.match(/^per.odo de visualiza..o: (\d{2})\/(\d{2})\/(\d{4}) at. (\d{2})\/(\d{2})\/(\d{4})/i))){ini=iso(m[1],m[2],m[3]);fim=iso(m[4],m[5],m[6]);continue}
+    if(/^saldo em conta\b/i.test(x)){const n=ls[i+1]&&ls[i+1].match(/^R\$ (-?\d{1,3}(?:\.\d{3})*,\d{2})/);if(n)saldoConta=cents(n[1]);continue}
+    if((m=x.match(SALDO))){saldos.push({date:iso(m[1],m[2],m[3]),balance:cents(m[4])});continue}
+    if((m=x.match(ROW))){
+      if(/^SALDO\b/i.test(m[4]))continue;
+      txs.push(v(iso(m[1],m[2],m[3]),cents(m[5]),m[4]));
+    }
+  }
+  if(!txs.length||!saldos.length)return null;
+  saldos.sort((a,b)=>a.date.localeCompare(b.date));
+  const s0=saldos[0];
+  const ate=txs.filter(x=>x.date<=s0.date);
+  const abertura=s0.balance-ate.reduce((a,x)=>a+x.amount,0);
+  const ultimo=saldos[saldos.length-1];
+  const maxTx=txs.map(x=>x.date).sort().pop();
+  const fechamento=t!=null?t:(saldoConta!=null?saldoConta:ultimo.balance);
+  // o último "saldo do dia" é o próprio saldo final (conferido pelo fechamento): fora da lista diária, porque o banco
+  // pode datar lançamentos recentes depois dele (ex.: Pix de domingo lançado na segunda), o que não é erro de leitura
+  const diarios=saldos.filter(x=>x!==ultimo);
+  const meta={openingBalance:abertura,closingBalance:fechamento,hasBalances:true,periodStart:ini||s0.date,periodEnd:fim||maxTx,closingDate:maxTx>ultimo.date?maxTx:ultimo.date};
+  const soma=txs.reduce((a,x)=>a+x.amount,0);
+  const ok=abertura+soma===fechamento;
+  let dOk=0;
+  for(const d of diarios){if(abertura+txs.filter(x=>x.date<=d.date).reduce((a,x)=>a+x.amount,0)===d.balance)dOk++}
+  // saldo atual em tempo real pode incluir centavos que o banco ainda não listou (ex.: rendimento do dia):
+  // se TODOS os saldos diários conferem e a diferença é de poucos centavos, a leitura está certa
+  const dif=fechamento-(abertura+soma);
+  const tol=!ok&&diarios.length>=5&&dOk===diarios.length&&Math.abs(dif)<=10;
+  const score=Math.min(tol?98:100,(ok||tol?60:0)+(diarios.length?40*dOk/diarios.length:0));
+  const diag=[txs.length+" lançamento(s) reconhecido(s)."];
+  diag.push(ok?"Os lançamentos lidos reproduzem exatamente o saldo final informado pelo banco.":tol?"Todos os saldos diários conferem; o saldo atual do banco difere em R$ "+(Math.abs(dif)/100).toFixed(2).replace(".",",")+" dos lançamentos listados (provavelmente um rendimento do dia que o banco ainda não detalhou).":"Os lançamentos lidos NÃO fecham com o saldo informado pelo banco — pode faltar algum lançamento ou algum sinal estar invertido.");
+  if(diarios.length)diag.push(dOk===diarios.length?"Todos os "+diarios.length+" saldos diários do extrato foram reproduzidos.":dOk+" de "+diarios.length+" saldos diários conferem — a divergência começa onde o primeiro deles falha.");
+  return{strategy:q,parsed:{txs,meta,dailyBalances:diarios},confidence:Math.max(0,Math.min(1,score/100)),checks:{closingOk:ok||tol,dailyOk:dOk,dailyTotal:diarios.length,txCount:txs.length},diagnostics:diag,trustworthy:score>=90&&txs.length>0};
+}
+function mn(e,t){let nbk=null;try{nbk=nubankConta(e,t)}catch(_){}if(!nbk)try{nbk=itauContaExtrato(e,t)}catch(_){}if(nbk)return nbk;let n=null,o=(r,i)=>{let{score:a,checks:c}=un(i,t),l={strategy:r,parsed:i,confidence:Math.max(0,Math.min(1,a/100)),checks:c,diagnostics:[],trustworthy:!1};(!n||a>n.confidence*100||a===n.confidence*100&&i.txs.length>n.parsed.txs.length)&&(n=l)};try{o(q,fe(e))}catch{}for(let r of Ge)try{o(r,J(e,r))}catch{continue}let s=n??{strategy:q,parsed:J(e,q),confidence:0,checks:{closingOk:null,dailyOk:0,dailyTotal:0,txCount:0},diagnostics:[],trustworthy:!1};return s.diagnostics=fn(s,t),s.trustworthy=s.confidence>=.9&&s.checks.txCount>0,s}function fn(e,t){let n=[],{checks:o,parsed:s}=e;return o.txCount?(n.push(`${o.txCount} lan\xE7amento(s) reconhecido(s).`),o.closingOk===!0?n.push("Os lan\xE7amentos lidos reproduzem exatamente o saldo final informado pelo banco."):o.closingOk===!1?n.push("Os lan\xE7amentos lidos N\xC3O fecham com o saldo informado pelo banco \u2014 pode faltar algum lan\xE7amento ou algum sinal estar invertido."):t==null&&s.meta.closingBalance==null&&n.push("Este arquivo n\xE3o informa saldo, ent\xE3o n\xE3o h\xE1 como conferir a leitura automaticamente. Informe o saldo final impresso no extrato para eu validar."),o.dailyTotal&&n.push(o.dailyOk===o.dailyTotal?`Todos os ${o.dailyTotal} saldos di\xE1rios do extrato foram reproduzidos.`:`${o.dailyOk} de ${o.dailyTotal} saldos di\xE1rios conferem \u2014 a diverg\xEAncia come\xE7a onde o primeiro deles falha.`),e.strategy.signMode==="balanceDelta"&&n.push("Neste layout, d\xE9bito e cr\xE9dito ficam em colunas separadas: o sinal foi deduzido da varia\xE7\xE3o do saldo."),e.strategy.signMode==="invertExplicit"&&n.push("Neste layout os sinais aparecem invertidos em rela\xE7\xE3o ao habitual; a leitura foi ajustada."),e.strategy.lastIsBalance||n.push("Este layout n\xE3o traz coluna de saldo por linha."),n):o.closingOk===!0?(n.push("Nenhuma movimenta\xE7\xE3o neste per\xEDodo \u2014 e o saldo informado pelo banco confere, ent\xE3o a leitura est\xE1 correta."),n):(n.push("Nenhum lan\xE7amento reconhecido neste arquivo. Pode ser um extrato digitalizado (imagem) ou um layout muito diferente."),n)}var pn=[{institution:"MERCADO_PAGO",re:/MERCADO\s*PAGO|MERCADOPAGO|10\.?573\.?521\/0001-91/i,weight:3},{institution:"NUBANK",re:/\bNUBANK\b|NU\s*PAGAMENTOS|NU\s*FINANCEIRA|18\.?236\.?120\/0001-58/i,weight:3},{institution:"PICPAY",re:/\bPICPAY\b|PIC\s*PAY|22\.?896\.?431\/0001-10/i,weight:3},{institution:"BRADESCO",re:/\bBRADESCO\b|60\.?746\.?948\/0001-12/i,weight:3},{institution:"ITAU",re:/\bITA[UÚ]\b|ITAU\s*UNIBANCO|60\.?701\.?190\/0001-04/i,weight:3},{institution:"SANTANDER",re:/\bSANTANDER\b|90\.?400\.?888\/0001-42/i,weight:3}],hn=new Set(["10573521000191","18236120000158","22896431000110","60746948000112","60701190000104","90400888000142"]),An=e=>e.replace(/\D/g,""),gn=/OUVIDORIA|\bSAC\b|CENTRAL DE ATENDIMENTO|ATENDIMENTO AO CLIENTE|\b0800\b|BANCO CENTRAL DO BRASIL|\bCVM\b|INSTITUI[ÇC][ÃA]O DE (PAGAMENTO|FINANCEIRA)|CORRESPONDENTE BANC[AÁ]RIO/i,pe=/Ag[êe]ncia:\s*\S|Conta:\s*\S|Transfer[êe]ncia (enviada|recebida) pelo Pix/i;function je(e){let t=e.slice(0,40).join(`
 `),n=e.join(`
 `),o={},s=t.split(`
 `).filter(d=>!pe.test(d)).join(`
@@ -1898,7 +1944,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-20-05';
+const SF_BUILD = '2026-10-20-06';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
