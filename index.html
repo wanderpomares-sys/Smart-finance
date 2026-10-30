@@ -230,8 +230,36 @@ nav button.active { color:var(--ink); }
 nav .ico { font-size:1.25rem; line-height:1; }
 input[type=checkbox] { width:18px; height:18px; margin-top:2px; accent-color:var(--ink); }
 </style>
+
 </head>
 <body>
+
+<style>
+#fb-block-overlay{position:fixed;inset:0;z-index:99999;background:#14263D;color:#fff;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center}
+#fb-block-overlay.show{display:flex}
+#fb-block-overlay h2{font-family:Archivo,sans-serif;font-size:1.8rem;margin-bottom:12px}
+#fb-block-overlay p{font-size:1.05rem;line-height:1.5;opacity:.9;margin-bottom:18px;max-width:360px}
+#fb-block-overlay button{background:#B98A2F;color:#fff;border:none;border-radius:12px;padding:14px 20px;font-weight:700;font-size:1rem;cursor:pointer}
+#fb-block-overlay .hint{font-size:.85rem;margin-top:16px;opacity:.7}
+</style>
+<div id="fb-block-overlay">
+  <h2>⚠️ Abra no navegador do celular</h2>
+  <p>Você abriu dentro do Instagram/Facebook e esse navegador bloqueia o salvamento de dados.<br>Seu dinheiro NÃO vai aparecer aqui.</p>
+  <button onclick="window.open(location.href,'_blank')">Abrir no Chrome / Safari</button>
+  <div class="hint">Depois toque nos 3 pontinhos ••• no canto e escolha "Abrir no navegador"</div>
+  <button style="background:transparent;border:1px solid rgba(255,255,255,.3);margin-top:12px" onclick="document.getElementById('fb-block-overlay').classList.remove('show')">Continuar mesmo assim</button>
+</div>
+<script>
+(function(){
+  var ua = navigator.userAgent || '';
+  var isFB = /FBAN|FBAV|FB_IAB|FB4A|Instagram/.test(ua);
+  if(isFB){
+    var el = document.getElementById('fb-block-overlay');
+    if(el) el.classList.add('show');
+  }
+})();
+</script>
+
 <header>
   <h1>Smart Finance <span>Family</span></h1>
   <button id="eye-toggle" class="eye-btn" onclick="toggleEye()" title="Mostrar valores" aria-label="Mostrar valores">🙈</button>
@@ -1944,7 +1972,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-20-06';
+const SF_BUILD = '2026-10-30-01';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
