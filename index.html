@@ -245,17 +245,45 @@ input[type=checkbox] { width:18px; height:18px; margin-top:2px; accent-color:var
 <div id="fb-block-overlay">
   <h2>⚠️ Abra no navegador do celular</h2>
   <p>Você abriu dentro do Instagram/Facebook e esse navegador bloqueia o salvamento de dados.<br>Seu dinheiro NÃO vai aparecer aqui.</p>
-  <button onclick="window.open(location.href,'_blank')">Abrir no Chrome / Safari</button>
-  <div class="hint">Depois toque nos 3 pontinhos ••• no canto e escolha "Abrir no navegador"</div>
+  <button id="fb-open-btn" onclick="sfAbrirNoNavegador()">Abrir no Chrome</button>
+  <button id="fb-copy-btn" style="background:transparent;border:1px solid rgba(255,255,255,.3);margin-top:12px" onclick="sfCopiarLink()">Copiar link</button>
+  <div class="hint" id="fb-hint">Se não abrir, toque nos 3 pontinhos ••• no canto e escolha "Abrir no navegador".</div>
   <button style="background:transparent;border:1px solid rgba(255,255,255,.3);margin-top:12px" onclick="document.getElementById('fb-block-overlay').classList.remove('show')">Continuar mesmo assim</button>
 </div>
 <script>
 (function(){
   var ua = navigator.userAgent || '';
   var isFB = /FBAN|FBAV|FB_IAB|FB4A|Instagram/.test(ua);
+  var isAndroid = /Android/i.test(ua);
+  var isIOS = /iPhone|iPad|iPod/i.test(ua);
+  window.sfAbrirNoNavegador = function(){
+    var u = location.href;
+    if(isAndroid){
+      // Android: abre direto no Chrome; se o Chrome não existir, volta para o próprio link
+      var semProto = u.replace(/^https?:\/\//,'');
+      location.href = 'intent://' + semProto + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' + encodeURIComponent(u) + ';end';
+    } else {
+      window.open(u,'_blank');
+    }
+  };
+  window.sfCopiarLink = function(){
+    var u = location.href, h = document.getElementById('fb-hint');
+    function ok(){ if(h) h.textContent = 'Link copiado. Abra o Safari ou o Chrome e cole na barra de endereço.'; }
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(u).then(ok, function(){ prompt('Copie o link:', u); }); return; }
+    }catch(e){}
+    try{ prompt('Copie o link:', u); }catch(e){}
+  };
   if(isFB){
     var el = document.getElementById('fb-block-overlay');
     if(el) el.classList.add('show');
+    // iPhone não permite abrir o Safari à força: o botão principal vira "copiar"
+    if(isIOS){
+      var b = document.getElementById('fb-open-btn'), c = document.getElementById('fb-copy-btn');
+      if(b && c){ b.textContent = 'Copiar link'; b.onclick = window.sfCopiarLink; c.style.display = 'none'; }
+      var h = document.getElementById('fb-hint');
+      if(h) h.textContent = 'Depois abra o Safari e cole o link. Ou toque em ••• e escolha "Abrir no Safari".';
+    }
   }
 })();
 </script>
@@ -1972,7 +2000,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-30-01';
+const SF_BUILD = '2026-10-30-02';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
