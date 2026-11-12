@@ -2000,7 +2000,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-11-12-01';
+const SF_BUILD = '2026-11-12-02';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3320,13 +3320,57 @@ function viewAtualizacaoBanner() {
   </div>`;
 }
 const SF_CONTATO = 'suporte@smartfinancefamily.com.br';
-/* Canal para o cliente enviar o comprovante e receber o arquivo .sflicense.
-   Mostra o endereço em texto também, porque o mailto: não abre em alguns
-   navegadores embutidos (ex.: dentro do Facebook). */
+/* Liberação automática: o servidor confere o pagamento (webhook da Kiwify) e devolve
+   a licença assinada. Fica desligada até a função do Supabase estar publicada. */
+const SF_LICENCA_AUTO_ON = false;
+const SF_LICENCA_URL = 'https://ibfghedgyxvyredykluq.supabase.co/functions/v1/licenca?acao=resgatar';
+function sfLiberarAuto() {
+  const antigo = document.getElementById('liberar-overlay'); if (antigo) antigo.remove();
+  const d = document.createElement('div');
+  d.id = 'liberar-overlay';
+  d.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  d.innerHTML = `<div class="card lockcard" style="max-width:420px;width:100%;position:relative">
+    <button onclick="document.getElementById('liberar-overlay').remove()" aria-label="Fechar" style="position:absolute;top:8px;right:12px;background:none;border:none;font-size:1.6rem;cursor:pointer">×</button>
+    <h2>Liberar meu plano</h2>
+    <p class="sub">Informe o e-mail que você usou na compra. Se o pagamento já foi confirmado, o app libera na hora.</p>
+    <input id="liberar-email" type="email" inputmode="email" autocomplete="email" placeholder="seu@email.com" style="width:100%;margin:8px 0">
+    <button class="landing-cta" id="liberar-btn" onclick="sfLiberarEnviar()">Liberar agora</button>
+    <div id="liberar-msg" style="margin-top:10px;font-size:.95rem"></div>
+  </div>`;
+  d.addEventListener('click', (e) => { if (e.target === d) d.remove(); });
+  document.body.appendChild(d);
+  try { const e = localStorage.getItem('sf_liberar_email'); if (e) document.getElementById('liberar-email').value = e; } catch (_) {}
+}
+async function sfLiberarEnviar() {
+  const msg = document.getElementById('liberar-msg'), btn = document.getElementById('liberar-btn');
+  const email = (document.getElementById('liberar-email').value || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg.innerHTML = '❌ Digite um e-mail válido.'; return; }
+  btn.disabled = true; msg.textContent = 'Conferindo o pagamento…';
+  try {
+    try { localStorage.setItem('sf_liberar_email', email); } catch (_) {}
+    const r = await fetch(SF_LICENCA_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SF_SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SF_SUPABASE_ANON_KEY },
+      body: JSON.stringify({ email, deviceId: getOrCreateDeviceId() }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { msg.innerHTML = '❌ ' + esc(j.erro || 'Não foi possível liberar agora.'); btn.disabled = false; return; }
+    await handleLicenseText(JSON.stringify(j));
+    if (S.license) { const o = document.getElementById('liberar-overlay'); if (o) o.remove(); const p = document.getElementById('planos-overlay'); if (p) p.remove(); }
+    else { msg.innerHTML = '❌ A licença recebida não pôde ser validada. Fale com o suporte.'; btn.disabled = false; }
+  } catch (e) {
+    msg.innerHTML = '❌ Sem conexão com o servidor. Tente de novo em instantes.'; btn.disabled = false;
+  }
+}
+/* Canal para o cliente receber a licença. Mostra o endereço em texto também, porque
+   o mailto: não abre em alguns navegadores embutidos (ex.: dentro do Facebook). */
 function linkEnviarComprovante(codigo) {
   const assunto = encodeURIComponent('Licença Smart Finance Family');
   const corpo = encodeURIComponent('Código do aparelho: ' + codigo + '\nPlano pago: \n\n(anexe o comprovante de pagamento)');
-  return `<div style="margin-top:10px;font-size:.95rem">Envie para <a href="mailto:${SF_CONTATO}?subject=${assunto}&body=${corpo}"><b>${SF_CONTATO}</b></a> e você recebe o arquivo da licença de volta.</div>`;
+  const manual = `Envie para <a href="mailto:${SF_CONTATO}?subject=${assunto}&body=${corpo}"><b>${SF_CONTATO}</b></a> e você recebe o arquivo da licença de volta.`;
+  if (!SF_LICENCA_AUTO_ON) return `<div style="margin-top:10px;font-size:.95rem">${manual}</div>`;
+  return `<button class="landing-cta" style="margin-top:12px;width:100%" onclick="sfLiberarAuto()">Já paguei — liberar agora</button>
+    <div style="margin-top:10px;font-size:.9rem;opacity:.85">Se não liberar, ${manual.charAt(0).toLowerCase() + manual.slice(1)}</div>`;
 }
 function verPlanos(ev) {
   if (ev) ev.preventDefault();
@@ -3454,7 +3498,7 @@ async function handleLicenseFile(file) {
   }
 }
 async function handleLicenseText(text) {
-  const statusEl = document.getElementById('license-status');
+  const statusEl = document.getElementById('license-status') || {}; // pode não existir na tela atual
   try {
     const { payload, assinatura } = JSON.parse(String(text || '').trim());
     if (!payload || !assinatura) throw new Error('Arquivo de licença mal formado.');
