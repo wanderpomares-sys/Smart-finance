@@ -1054,7 +1054,7 @@ const realBRL = (c) => (c / 100).toLocaleString('pt-BR', { style: 'currency', cu
 const fmtBRL = (c) => (valuesHidden ? MASK : realBRL(c));
 const isValuesHidden = () => valuesHidden;
 function setValuesHidden(v) { valuesHidden = v; }
-const fmtDate = (iso) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
+const fmtDate = (iso) => { const [y, m, d] = String(iso).slice(0, 10).split('-'); return `${d}/${m}/${y}`; };
 const balance = (s, acc) => (acc.anchorBalance || 0) + s.txs.filter((t) => t.accountId === acc.id && t.date <= today()).reduce((sum, t) => sum + t.amount, 0);
 const accTxs = (s, accountId) => s.txs.filter((t) => t.accountId === accountId)
   .map((t) => ({ id: t.id, date: t.date, amount: t.amount, descriptionRaw: t.descriptionRaw, descriptionNorm: t.descriptionNorm }));
@@ -2000,7 +2000,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-11-12-02';
+const SF_BUILD = '2026-11-12-03';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
