@@ -2000,7 +2000,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-10-30-02';
+const SF_BUILD = '2026-11-12-01';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3319,7 +3319,7 @@ function viewAtualizacaoBanner() {
     <a href="#" onclick="atualizarAgora();return false" style="color:#fff">Atualizar agora</a>
   </div>`;
 }
-const SF_CONTATO = 'contato@smartfinancefamily.com.br';
+const SF_CONTATO = 'suporte@smartfinancefamily.com.br';
 /* Canal para o cliente enviar o comprovante e receber o arquivo .sflicense.
    Mostra o endereço em texto também, porque o mailto: não abre em alguns
    navegadores embutidos (ex.: dentro do Facebook). */
