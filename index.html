@@ -2000,7 +2000,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-11-13-01';
+const SF_BUILD = '2026-11-13-02';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3320,10 +3320,65 @@ function viewAtualizacaoBanner() {
   </div>`;
 }
 const SF_CONTATO = 'suporte@smartfinancefamily.com.br';
-/* Liberação automática: o servidor confere o pagamento (webhook da Kiwify) e devolve
-   a licença assinada. Fica desligada até a função do Supabase estar publicada. */
+/* Liberação automática. O checkout da Kiwify é aberto com ?src=<código do aparelho>; a Kiwify
+   devolve esse código no webhook e o servidor liga o pagamento ao aparelho. O app pergunta
+   ao servidor de tempos em tempos e, quando o pagamento aparece, registra a licença sozinho
+   e mostra o aviso. Fica desligada até a função do Supabase estar publicada. */
 const SF_LICENCA_AUTO_ON = false;
-const SF_LICENCA_URL = 'https://ibfghedgyxvyredykluq.supabase.co/functions/v1/licenca?acao=resgatar';
+const SF_LICENCA_FN = 'https://ibfghedgyxvyredykluq.supabase.co/functions/v1/licenca';
+function sfPayUrl(id) { return 'https://pay.kiwify.com.br/' + id + '?src=' + encodeURIComponent(getOrCreateDeviceId()); }
+function sfAguardarPagamento() {            // chamado ao tocar em "Pagar": acelera a verificação por 30 min
+  try { localStorage.setItem('sf_pagando_ate', String(Date.now() + 30 * 60 * 1000)); } catch (_) {}
+  setTimeout(sfChecarLiberacao, 4000);
+}
+async function sfPostFn(acao, corpo) {
+  const r = await fetch(SF_LICENCA_FN + '?acao=' + acao, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SF_SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SF_SUPABASE_ANON_KEY },
+    body: JSON.stringify(corpo),
+  });
+  return { ok: r.ok, status: r.status, j: await r.json().catch(() => ({})) };
+}
+function sfAvisoLiberado(lic) {
+  const plano = SF_PLANO_LABEL[lic.plano] || lic.plano;
+  let extra = 'Sem vencimento. Obrigado por apoiar o app!';
+  if (lic.plano === 'ANUAL') extra = 'Válido até ' + fmtDate(new Date(new Date(lic.data).getTime() + SF_ANUAL_DIAS * 86400000).toISOString()) + '.';
+  if (lic.plano === 'CORTESIA') extra = 'Acesso cortesia, sem custo.';
+  ['planos-overlay', 'liberar-overlay', 'liberado-overlay'].forEach((id) => { const e = document.getElementById(id); if (e) e.remove(); });
+  const d = document.createElement('div');
+  d.id = 'liberado-overlay';
+  d.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
+  d.innerHTML = `<div class="card lockcard" style="max-width:400px;width:100%;text-align:center">
+    <div style="font-size:3rem">🎉</div>
+    <h2>Acesso liberado!</h2>
+    <p class="sub"><b>Plano ${esc(plano)}</b></p>
+    <p class="sub">${esc(extra)}</p>
+    <button class="landing-cta" style="width:100%;margin-top:10px" onclick="document.getElementById('liberado-overlay').remove()">Continuar</button>
+  </div>`;
+  document.body.appendChild(d);
+}
+const _sfChk = { busy: false, primeira: true };
+async function sfChecarLiberacao() {
+  if (!SF_LICENCA_AUTO_ON || _sfChk.busy) return;
+  if (typeof S === 'undefined' || !S) return;                          // cofre ainda trancado
+  if (S.license && !isLicenseExpired()) return;                        // já está liberado
+  let ate = 0; try { ate = Number(localStorage.getItem('sf_pagando_ate')) || 0; } catch (_) {}
+  if (!_sfChk.primeira && Date.now() > ate) return;                    // só insiste enquanto espera um pagamento
+  _sfChk.primeira = false; _sfChk.busy = true;
+  try {
+    const r = await sfPostFn('consultar', { deviceId: getOrCreateDeviceId() });
+    if (r.ok && r.j && r.j.payload) {
+      const antes = S.license;
+      await handleLicenseText(JSON.stringify(r.j));
+      if (S.license && S.license !== antes) { try { localStorage.removeItem('sf_pagando_ate'); } catch (_) {} sfAvisoLiberado(S.license); }
+    }
+  } catch (_) { /* sem internet: tenta de novo no próximo ciclo */ }
+  finally { _sfChk.busy = false; }
+}
+setInterval(sfChecarLiberacao, 8000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) sfChecarLiberacao(); });
+
+/* Plano B: quem pagou com outro link ou outro aparelho informa o e-mail da compra */
 function sfLiberarAuto() {
   const antigo = document.getElementById('liberar-overlay'); if (antigo) antigo.remove();
   const d = document.createElement('div');
@@ -3331,7 +3386,7 @@ function sfLiberarAuto() {
   d.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px';
   d.innerHTML = `<div class="card lockcard" style="max-width:420px;width:100%;position:relative">
     <button onclick="document.getElementById('liberar-overlay').remove()" aria-label="Fechar" style="position:absolute;top:8px;right:12px;background:none;border:none;font-size:1.6rem;cursor:pointer">×</button>
-    <h2>Liberar meu plano</h2>
+    <h2>Já paguei e não liberou</h2>
     <p class="sub">Informe o e-mail que você usou na compra. Se o pagamento já foi confirmado, o app libera na hora.</p>
     <input id="liberar-email" type="email" inputmode="email" autocomplete="email" placeholder="seu@email.com" style="width:100%;margin:8px 0">
     <button class="landing-cta" id="liberar-btn" onclick="sfLiberarEnviar()">Liberar agora</button>
@@ -3348,29 +3403,24 @@ async function sfLiberarEnviar() {
   btn.disabled = true; msg.textContent = 'Conferindo o pagamento…';
   try {
     try { localStorage.setItem('sf_liberar_email', email); } catch (_) {}
-    const r = await fetch(SF_LICENCA_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: SF_SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SF_SUPABASE_ANON_KEY },
-      body: JSON.stringify({ email, deviceId: getOrCreateDeviceId() }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) { msg.innerHTML = '❌ ' + esc(j.erro || 'Não foi possível liberar agora.'); btn.disabled = false; return; }
-    await handleLicenseText(JSON.stringify(j));
-    if (S.license) { const o = document.getElementById('liberar-overlay'); if (o) o.remove(); const p = document.getElementById('planos-overlay'); if (p) p.remove(); }
+    const r = await sfPostFn('resgatar', { email, deviceId: getOrCreateDeviceId() });
+    if (!r.ok) { msg.innerHTML = '❌ ' + esc(r.j.erro || 'Não foi possível liberar agora.'); btn.disabled = false; return; }
+    await handleLicenseText(JSON.stringify(r.j));
+    if (S.license) sfAvisoLiberado(S.license);
     else { msg.innerHTML = '❌ A licença recebida não pôde ser validada. Fale com o suporte.'; btn.disabled = false; }
   } catch (e) {
     msg.innerHTML = '❌ Sem conexão com o servidor. Tente de novo em instantes.'; btn.disabled = false;
   }
 }
-/* Canal para o cliente receber a licença. Mostra o endereço em texto também, porque
-   o mailto: não abre em alguns navegadores embutidos (ex.: dentro do Facebook). */
+/* Rodapé das telas de pagamento. Mostra o endereço em texto também, porque o mailto: não
+   abre em alguns navegadores embutidos (ex.: dentro do Facebook). */
 function linkEnviarComprovante(codigo) {
   const assunto = encodeURIComponent('Licença Smart Finance Family');
   const corpo = encodeURIComponent('Código do aparelho: ' + codigo + '\nPlano pago: \n\n(anexe o comprovante de pagamento)');
   const manual = `Envie para <a href="mailto:${SF_CONTATO}?subject=${assunto}&body=${corpo}"><b>${SF_CONTATO}</b></a> e você recebe o arquivo da licença de volta.`;
   if (!SF_LICENCA_AUTO_ON) return `<div style="margin-top:10px;font-size:.95rem">${manual}</div>`;
-  return `<button class="landing-cta" style="margin-top:12px;width:100%" onclick="sfLiberarAuto()">Já paguei — liberar agora</button>
-    <div style="margin-top:10px;font-size:.9rem;opacity:.85">Se não liberar, ${manual.charAt(0).toLowerCase() + manual.slice(1)}</div>`;
+  return `<div style="margin-top:12px;font-size:.95rem">✅ Depois de pagar, <b>volte para o app</b>: o acesso é liberado sozinho, em poucos segundos.</div>
+    <div style="margin-top:8px;font-size:.9rem;opacity:.9">Pagou e não liberou? <a href="#" onclick="sfLiberarAuto();return false"><b>Informe o e-mail da compra</b></a> ou ${manual.charAt(0).toLowerCase() + manual.slice(1)}</div>`;
 }
 function verPlanos(ev) {
   if (ev) ev.preventDefault();
@@ -3385,8 +3435,8 @@ function verPlanos(ev) {
     <h2>Escolha seu plano</h2>
     <p class="sub">Seus dados continuam salvos e criptografados no seu celular. Sem cobrança automática.</p>
     <div class="btns" style="display:flex;flex-direction:column;gap:10px">
-      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener" onclick="trackCheckout('ANUAL')">Plano Anual — R$ 9,90/ano</a>
-      <a class="landing-cta" href="https://pay.kiwify.com.br/Yd9l2b4" target="_blank" rel="noopener" onclick="trackCheckout('VITALICIO')">Família Vitalício — R$ 19,90 único</a>
+      <a class="landing-cta" href="${sfPayUrl('hxCZvnR')}" target="_blank" rel="noopener" onclick="sfAguardarPagamento();trackCheckout('ANUAL')">Plano Anual — R$ 9,90/ano</a>
+      <a class="landing-cta" href="${sfPayUrl('Yd9l2b4')}" target="_blank" rel="noopener" onclick="sfAguardarPagamento();trackCheckout('VITALICIO')">Família Vitalício — R$ 19,90 único</a>
     </div>
     <div class="hint" style="margin-top:16px">Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber sua licença:
       <div style="font-size:1.3rem;font-weight:700;letter-spacing:1px;margin-top:6px">${esc(codigo)}</div>${linkEnviarComprovante(codigo)}</div>
@@ -3425,8 +3475,8 @@ function viewTrialExpired() {
     <h2>Seu período de avaliação acabou</h2>
     <p class="sub">Você avaliou o Smart Finance Family por ${SF_TRIAL_DIAS} dias. Seus dados continuam salvos e criptografados no seu celular — escolha um plano pra continuar usando.</p>
     <div class="btns" style="display:flex; flex-direction:column; gap:10px">
-      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener" onclick="trackCheckout('ANUAL')">Plano Anual — R$ 9,90/ano</a>
-      <a class="landing-cta" href="https://pay.kiwify.com.br/Yd9l2b4" target="_blank" rel="noopener" onclick="trackCheckout('VITALICIO')">Família Vitalício — R$ 19,90 único</a>
+      <a class="landing-cta" href="${sfPayUrl('hxCZvnR')}" target="_blank" rel="noopener" onclick="sfAguardarPagamento();trackCheckout('ANUAL')">Plano Anual — R$ 9,90/ano</a>
+      <a class="landing-cta" href="${sfPayUrl('Yd9l2b4')}" target="_blank" rel="noopener" onclick="sfAguardarPagamento();trackCheckout('VITALICIO')">Família Vitalício — R$ 19,90 único</a>
     </div>
     <div class="hint" style="margin-top:16px">
       Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber sua licença:
@@ -3448,7 +3498,7 @@ function viewLicenseExpired() {
     <h2>Sua assinatura anual venceu</h2>
     <p class="sub">Seu plano Anual venceu em ${fmtDate(venceuEm.toISOString())}. Seus dados continuam salvos e criptografados no seu celular — renove pra continuar usando o app.</p>
     <div class="btns">
-      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener" onclick="trackCheckout('RENOVACAO_ANUAL')">Renovar plano Anual</a>
+      <a class="landing-cta" href="${sfPayUrl('hxCZvnR')}" target="_blank" rel="noopener" onclick="sfAguardarPagamento();trackCheckout('RENOVACAO_ANUAL')">Renovar plano Anual</a>
     </div>
     <div class="hint" style="margin-top:16px">
       Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber a nova licença:

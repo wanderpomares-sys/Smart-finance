@@ -1,6 +1,7 @@
 // Edge Function "licenca" — Smart Finance Family
 //   POST ?acao=webhook   <- Kiwify avisa que o pedido foi pago/reembolsado
-//   POST ?acao=resgatar  <- o app envia { email, deviceId } e recebe a licença assinada
+//   POST ?acao=consultar <- o app pergunta { deviceId }: se houver compra paga ligada ao aparelho, recebe a licença (automático)
+//   POST ?acao=resgatar  <- plano B: o app envia { email, deviceId } (quem pagou por outro link/aparelho)
 // Segredos (supabase secrets set): LICENSE_PRIVATE_JWK, KIWIFY_TOKEN
 // Automáticos no Supabase: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 // Publicar com: supabase functions deploy licenca --no-verify-jwt
@@ -75,6 +76,15 @@ function statusDoPedido(c) {
   if (['refunded', 'chargedback', 'chargeback'].includes(s) || ['order_refunded', 'chargeback'].includes(ev)) return 'refunded';
   return null; // aguardando pagamento, recusado etc.: ignora
 }
+// O app abre o checkout com ?src=<código do aparelho>; a Kiwify devolve isso em TrackingParameters
+function deviceDoPedido(c) {
+  const t = c.TrackingParameters || c.tracking_parameters || {};
+  for (const k of ['src', 'sck', 'utm_content', 'utm_term', 'utm_campaign', 'utm_medium', 'utm_source']) {
+    const v = String(t[k] || '').trim().toUpperCase();
+    if (ALFABETO.test(v)) return v;
+  }
+  return null;
+}
 function planoDoProduto(nome) {
   return /vital/i.test(String(nome || '')) ? 'VITALICIO' : 'ANUAL';
 }
@@ -96,36 +106,56 @@ async function webhook(req) {
       order_id: orderId, email, nome: (c.Customer && (c.Customer.full_name || c.Customer.first_name)) || null,
       plano: planoDoProduto(produto), status, produto, bruto: c,
       ...(status === 'paid' ? { pago_em: new Date().toISOString() } : {}),
+      ...(deviceDoPedido(c) ? { device_id: deviceDoPedido(c) } : {}),
     }),
   });
   return resp(req, 200, { ok: true });
 }
 
-/* ---------- resgate pelo app ---------- */
+/* ---------- emissão (comum ao automático e ao resgate por e-mail) ---------- */
+const PESO = { VITALICIO: 3, CORTESIA: 2, ANUAL: 1 };
+function melhorCompra(compras) {
+  // vitalício > cortesia > anual; dentro do mesmo plano, a mais recente (a lista já vem ordenada)
+  return compras.slice().sort((a, b) => (PESO[b.plano] || 0) - (PESO[a.plano] || 0))[0];
+}
+function anualVencido(c) {
+  return c.plano === 'ANUAL' && Date.now() > new Date(c.pago_em).getTime() + ANUAL_DIAS * 86400000;
+}
+async function emitir(req, compra, deviceId, nomeFallback) {
+  const usados = await db('resgates?order_id=eq.' + encodeURIComponent(compra.order_id) + '&select=device_id');
+  if (!usados.some((u) => u.device_id === deviceId)) {
+    if (usados.length >= MAX_APARELHOS) return resp(req, 403, { erro: 'Essa compra já foi usada no limite de aparelhos. Fale com o suporte: suporte@smartfinancefamily.com.br' });
+    await db('resgates', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ order_id: compra.order_id, device_id: deviceId }) });
+  }
+  const payload = { nome: compra.nome || nomeFallback || 'Cliente', plano: compra.plano, data: new Date(compra.pago_em).toISOString(), deviceId, observacao: 'auto ' + String(compra.order_id).slice(0, 8) };
+  return resp(req, 200, await assinar(payload));
+}
+const COLS = '&status=eq.paid&order=pago_em.desc&select=order_id,nome,plano,pago_em';
+
+/* ---------- automático: o app pergunta pelo próprio código de aparelho ---------- */
+async function consultar(req) {
+  let b; try { b = await req.json(); } catch (_) { return resp(req, 400, { erro: 'Pedido inválido.' }); }
+  const deviceId = String(b.deviceId || '').trim().toUpperCase();
+  if (!ALFABETO.test(deviceId)) return resp(req, 400, { erro: 'Código do aparelho inválido.' });
+  const compras = (await db('compras?device_id=eq.' + encodeURIComponent(deviceId) + COLS)).filter((c) => !anualVencido(c));
+  if (!compras.length) return resp(req, 200, { pendente: true });   // ainda não há pagamento: o app tenta de novo
+  return emitir(req, melhorCompra(compras), deviceId);
+}
+
+/* ---------- plano B: resgate pelo e-mail da compra ---------- */
 async function resgatar(req) {
   let b; try { b = await req.json(); } catch (_) { return resp(req, 400, { erro: 'Pedido inválido.' }); }
   const email = String(b.email || '').trim().toLowerCase();
   const deviceId = String(b.deviceId || '').trim().toUpperCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return resp(req, 400, { erro: 'Informe o e-mail usado na compra.' });
   if (!ALFABETO.test(deviceId)) return resp(req, 400, { erro: 'Código do aparelho inválido.' });
-
-  const compras = await db('compras?email=eq.' + encodeURIComponent(email) + '&status=eq.paid&order=pago_em.desc&select=order_id,nome,plano,pago_em');
-  if (!compras || !compras.length) {
+  const todas = await db('compras?email=eq.' + encodeURIComponent(email) + COLS);
+  if (!todas.length) {
     return resp(req, 404, { erro: 'Ainda não encontramos um pagamento aprovado para este e-mail. Se você acabou de pagar, aguarde 1 ou 2 minutos e tente de novo. Confira também se é o mesmo e-mail da compra.' });
   }
-  const compra = compras.find((x) => x.plano === 'VITALICIO') || compras[0];
-  if (compra.plano === 'ANUAL') {
-    const fim = new Date(compra.pago_em).getTime() + ANUAL_DIAS * 86400000;
-    if (Date.now() > fim) return resp(req, 402, { erro: 'O plano Anual desta compra já venceu. Faça uma nova compra para renovar.' });
-  }
-  const usados = await db('resgates?order_id=eq.' + encodeURIComponent(compra.order_id) + '&select=device_id');
-  const ja = usados.some((u) => u.device_id === deviceId);
-  if (!ja) {
-    if (usados.length >= MAX_APARELHOS) return resp(req, 403, { erro: 'Essa compra já foi usada no limite de aparelhos. Fale com o suporte: suporte@smartfinancefamily.com.br' });
-    await db('resgates', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ order_id: compra.order_id, device_id: deviceId }) });
-  }
-  const payload = { nome: compra.nome || email, plano: compra.plano, data: new Date(compra.pago_em).toISOString(), deviceId, observacao: 'auto ' + compra.order_id.slice(0, 8) };
-  return resp(req, 200, await assinar(payload));
+  const compras = todas.filter((c) => !anualVencido(c));
+  if (!compras.length) return resp(req, 402, { erro: 'O plano Anual desta compra já venceu. Faça uma nova compra para renovar.' });
+  return emitir(req, melhorCompra(compras), deviceId, email);
 }
 
 Deno.serve(async (req) => {
@@ -134,6 +164,7 @@ Deno.serve(async (req) => {
   try {
     const acao = new URL(req.url).searchParams.get('acao');
     if (acao === 'webhook') return await webhook(req);
+    if (acao === 'consultar') return await consultar(req);
     if (acao === 'resgatar') return await resgatar(req);
     return resp(req, 404, { erro: 'ação desconhecida' });
   } catch (e) {

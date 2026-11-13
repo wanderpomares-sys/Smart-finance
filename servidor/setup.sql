@@ -12,7 +12,9 @@ create table if not exists public.compras (
   bruto      jsonb,                       -- corpo original do webhook (para conferência)
   criado_em  timestamptz not null default now()
 );
-create index if not exists compras_email_idx on public.compras (email);
+alter table public.compras add column if not exists device_id text;   -- código do aparelho (vem do link do checkout)
+create index if not exists compras_email_idx  on public.compras (email);
+create index if not exists compras_device_idx on public.compras (device_id);
 
 create table if not exists public.resgates (
   id         uuid primary key default gen_random_uuid(),
@@ -26,3 +28,8 @@ create table if not exists public.resgates (
 -- Só a função do servidor (service_role) acessa essas tabelas.
 alter table public.compras  enable row level security;
 alter table public.resgates enable row level security;
+
+-- CORTESIA (acesso grátis): insira uma linha em Table Editor > compras, por exemplo:
+--   order_id: cortesia-maria   email: maria@email.com   (ou device_id: XXXX-XXXX do aparelho)
+--   nome: Maria   plano: CORTESIA   status: paid
+-- Se informar o device_id, o aparelho recebe o aviso de acesso liberado sozinho.
