@@ -2000,7 +2000,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-11-13-03';
+const SF_BUILD = '2026-11-13-04';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3324,7 +3324,7 @@ const SF_CONTATO = 'suporte@smartfinancefamily.com.br';
    devolve esse código no webhook e o servidor liga o pagamento ao aparelho. O app pergunta
    ao servidor de tempos em tempos e, quando o pagamento aparece, registra a licença sozinho
    e mostra o aviso. Fica desligada até a função do Supabase estar publicada. */
-const SF_LICENCA_AUTO_ON = false;
+const SF_LICENCA_AUTO_ON = true;
 const SF_LICENCA_FN = 'https://ibfghedgyxvyredykluq.supabase.co/functions/v1/super-processor';
 function sfPayUrl(id) { return 'https://pay.kiwify.com.br/' + id + '?src=' + encodeURIComponent(getOrCreateDeviceId()); }
 function sfAguardarPagamento() {            // chamado ao tocar em "Pagar": acelera a verificação por 30 min
