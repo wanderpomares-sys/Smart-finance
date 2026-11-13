@@ -92,7 +92,10 @@ async function webhook(req) {
   const corpo = await req.text();
   const assin = new URL(req.url).searchParams.get('signature') || '';
   const token = env('KIWIFY_TOKEN');
-  if (!token || !assin || !igual(await hmacSha1Hex(corpo, token), assin.toLowerCase())) return resp(req, 401, { erro: 'assinatura inválida' });
+  const chave = new URL(req.url).searchParams.get('chave') || '';
+  const okChave = !!token && !!chave && igual(chave, token);
+  const okAssin = !!token && !!assin && igual(await hmacSha1Hex(corpo, token), assin.toLowerCase());
+  if (!okChave && !okAssin) return resp(req, 401, { erro: 'assinatura inválida' });
   const c = JSON.parse(corpo);
   const status = statusDoPedido(c);
   const orderId = String(c.order_id || c.order_ref || '');
