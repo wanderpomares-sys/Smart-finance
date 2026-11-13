@@ -2000,7 +2000,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-11-13-04';
+const SF_BUILD = '2026-11-13-05';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3349,7 +3349,6 @@ function sfAvisoLiberado(lic) {
   d.id = 'liberado-overlay';
   d.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
   d.innerHTML = `<div class="card lockcard" style="max-width:400px;width:100%;text-align:center">
-    <div style="font-size:3rem">🎉</div>
     <h2>Acesso liberado!</h2>
     <p class="sub"><b>Plano ${esc(plano)}</b></p>
     <p class="sub">${esc(extra)}</p>
