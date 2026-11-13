@@ -114,6 +114,30 @@ button:disabled { opacity:.5; cursor:not-allowed; }
     </div>
   </section>
 
+  <!-- ===== Cortesia por link ===== -->
+  <section class="card hidden" id="card-cortesia">
+    <h2>🎁 Link de cortesia</h2>
+    <div class="hint">Gera um link. Quem abrir no app recebe o acesso sozinho, sem digitar nada e sem precisar do código do aparelho.</div>
+    <label for="c-nome">Nome da pessoa</label>
+    <input id="c-nome" autocomplete="off" placeholder="Ex.: Maria Silva">
+    <label for="c-valid">Validade do link</label>
+    <select id="c-valid">
+      <option value="7">7 dias</option>
+      <option value="30">30 dias</option>
+      <option value="0">Sem validade</option>
+    </select>
+    <button id="btn-c-gerar" class="gold">Gerar link de cortesia</button>
+    <div id="c-msg" class="msg"></div>
+    <div id="c-resultado" class="hidden">
+      <div class="row">
+        <button id="btn-c-compartilhar" class="gold" type="button">Compartilhar</button>
+        <button id="btn-c-copiar" class="ghost" type="button">Copiar link</button>
+      </div>
+      <textarea id="c-link" readonly style="margin-top:8px"></textarea>
+      <div class="hint">O acesso de cortesia não vence. O prazo acima vale só para abrir o link. Quem receber o link pode repassá-lo, então envie só para quem você quer.</div>
+    </div>
+  </section>
+
   <!-- ===== Histórico ===== -->
   <section class="card hidden" id="card-hist">
     <h2>🕘 Emitidas neste aparelho</h2>
@@ -194,7 +218,7 @@ async function atualizarTelaChave() {
   show('chave-vazia', !guardada && !aberta);
   show('chave-trancada', !!guardada && !aberta);
   show('chave-aberta', aberta);
-  show('card-emitir', aberta); show('card-hist', aberta);
+  show('card-emitir', aberta); show('card-cortesia', aberta); show('card-hist', aberta);
   if (aberta) renderHist();
 }
 
@@ -220,7 +244,7 @@ $('btn-abrir').onclick = async () => {
   } catch (e) { setMsg('chave-msg', '❌ ' + e.message, 'err'); }
 };
 $('senha-abrir').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-abrir').click(); });
-$('btn-trancar').onclick = async () => { privateKey = null; ultimoArquivo = null; show('resultado', false); setMsg('emitir-msg', '', ''); await atualizarTelaChave(); };
+$('btn-trancar').onclick = async () => { privateKey = null; ultimoArquivo = null; ultimoLink = null; show('c-resultado', false); show('resultado', false); setMsg('emitir-msg', '', ''); await atualizarTelaChave(); };
 async function apagarChave() {
   if (!confirm('Apagar a chave deste aparelho? Você precisará colar a chave privada de novo para emitir licenças.')) return;
   await kvDel('chave'); privateKey = null; ultimoArquivo = null; await atualizarTelaChave();
@@ -284,6 +308,48 @@ $('btn-compartilhar').onclick = async () => {
     if (navigator.canShare && navigator.canShare({ files: [f] })) await navigator.share({ files: [f], title: 'Licença Smart Finance Family' });
     else { baixar(); setMsg('emitir-msg', 'Este aparelho não compartilha arquivos direto — o arquivo foi baixado, é só anexar.', 'warn'); }
   } catch (e) { if (e.name !== 'AbortError') setMsg('emitir-msg', '❌ ' + e.message, 'err'); }
+};
+
+
+/* ---------- cortesia por link ---------- */
+const APP_URL = 'https://smartfinancefamily.com.br/';
+let ultimoLink = null;
+$('btn-c-gerar').onclick = async () => {
+  try {
+    if (!privateKey) throw new Error('Destrave a chave primeiro.');
+    const nome = $('c-nome').value.trim();
+    if (!nome) throw new Error('Informe o nome da pessoa.');
+    const dias = Number($('c-valid').value) || 0;
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(5)), (b) => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('');
+    const payload = { t: 'CORTESIA_LINK', nome, id, data: new Date().toISOString(), exp: dias ? new Date(Date.now() + dias * 86400000).toISOString() : null };
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privateKey, bytes);
+    const token = toB64url(bytes) + '.' + toB64url(sig);
+
+    // Autoconferência com a mesma lógica do app antes de entregar.
+    const pub = await crypto.subtle.importKey('jwk', PUBKEY, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['verify']);
+    const [p64, s64] = token.split('.');
+    const ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, pub, fromB64url(s64), fromB64url(p64));
+    if (!ok) throw new Error('A assinatura gerada não passou na conferência. Nada foi entregue.');
+
+    ultimoLink = APP_URL + '#cortesia=' + token;
+    guardarHist({ nome, codigo: 'link ' + id, plano: 'CORTESIA', data: payload.data, obs: dias ? 'link válido por ' + dias + ' dias' : 'link sem validade' });
+    renderHist();
+    $('c-link').value = ultimoLink; show('c-resultado', true);
+    setMsg('c-msg', '✅ Link gerado e conferido. É só enviar para ' + nome + '.', 'ok');
+  } catch (e) { setMsg('c-msg', '❌ ' + e.message, 'err'); show('c-resultado', false); }
+};
+$('btn-c-copiar').onclick = async () => {
+  if (!ultimoLink) return;
+  try { await navigator.clipboard.writeText(ultimoLink); setMsg('c-msg', '✅ Link copiado. Cole no WhatsApp.', 'ok'); }
+  catch (e) { const t = $('c-link'); t.focus(); t.select(); setMsg('c-msg', 'Selecionei o link abaixo — use Copiar do teclado.', 'warn'); }
+};
+$('btn-c-compartilhar').onclick = async () => {
+  if (!ultimoLink) return;
+  try {
+    if (navigator.share) await navigator.share({ title: 'Smart Finance Family', text: 'Seu acesso ao Smart Finance Family. Abra o link no celular:', url: ultimoLink });
+    else await $('btn-c-copiar').onclick();
+  } catch (e) { if (e.name !== 'AbortError') setMsg('c-msg', '❌ ' + e.message, 'err'); }
 };
 
 /* ---------- histórico local (só nome, código, plano e data — nunca a chave) ---------- */

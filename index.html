@@ -2000,7 +2000,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-11-13-05';
+const SF_BUILD = '2026-11-13-06';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3567,6 +3567,58 @@ async function handleLicenseText(text) {
     statusEl.innerHTML = '❌ Não consegui ler esse arquivo: ' + esc(e.message);
   }
 }
+/* Cortesia por link: o gerador cria um link com um código assinado (mesma chave das licenças).
+   Quem abre o link no app recebe o acesso sozinho, sem digitar nada. O código fica guardado
+   até o cofre estar aberto (conta criada/desbloqueada). */
+const SF_CORT_KEY = 'sf_cortesia_pendente';
+const _sfCort = { busy: false };
+function sfLerLinkCortesia() {
+  try {
+    const m = (location.hash || '').match(/[#&]cortesia=([A-Za-z0-9_.\-]+)/) || (location.search || '').match(/[?&]cortesia=([A-Za-z0-9_.\-]+)/);
+    if (!m) return;
+    localStorage.setItem(SF_CORT_KEY, m[1]);
+    history.replaceState(null, '', location.pathname);   // tira o código da barra de endereço
+  } catch (_) {}
+}
+function sfAvisoSimples(titulo, texto) {
+  const antigo = document.getElementById('aviso-simples'); if (antigo) antigo.remove();
+  const d = document.createElement('div');
+  d.id = 'aviso-simples';
+  d.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px';
+  d.innerHTML = `<div class="card lockcard" style="max-width:400px;width:100%;text-align:center">
+    <h2>${esc(titulo)}</h2><p class="sub">${esc(texto)}</p>
+    <button class="landing-cta" style="width:100%;margin-top:10px" onclick="document.getElementById('aviso-simples').remove()">Entendi</button>
+  </div>`;
+  document.body.appendChild(d);
+}
+async function sfAplicarCortesia() {
+  let tok = null; try { tok = localStorage.getItem(SF_CORT_KEY); } catch (_) {}
+  if (!tok || _sfCort.busy || typeof S === 'undefined' || !S) return;     // espera o cofre abrir
+  const limpar = () => { try { localStorage.removeItem(SF_CORT_KEY); } catch (_) {} };
+  if (S.license && !isLicenseExpired()) { limpar(); return; }
+  _sfCort.busy = true;
+  try {
+    const [p64, s64] = tok.split('.');
+    if (!p64 || !s64) throw new Error('mal formado');
+    const bytes = b64urlToBuf(p64);
+    const publicKey = await crypto.subtle.importKey('jwk', SF_LICENSE_PUBKEY, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['verify']);
+    const ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, publicKey, b64urlToBuf(s64), bytes);
+    if (!ok) throw new Error('assinatura');
+    const p = JSON.parse(new TextDecoder().decode(bytes));
+    if (!p || p.t !== 'CORTESIA_LINK' || !p.nome || !p.data) throw new Error('conteúdo');
+    limpar();
+    if (p.exp && Date.now() > new Date(p.exp).getTime()) { sfAvisoSimples('Link expirado', 'Esse link de cortesia já venceu. Peça um novo a quem enviou.'); return; }
+    S.license = { nome: p.nome, plano: 'CORTESIA', data: p.data, deviceId: getOrCreateDeviceId(), observacao: 'link ' + (p.id || '') };
+    persistNow();
+    render();
+    sfAvisoLiberado(S.license);
+  } catch (_) {
+    limpar();
+    sfAvisoSimples('Link inválido', 'Não consegui validar esse link de cortesia. Peça um novo a quem enviou.');
+  } finally { _sfCort.busy = false; }
+}
+sfLerLinkCortesia();
+setInterval(sfAplicarCortesia, 1500);
 const fmtDateTime = (iso) => {
   const d = new Date(iso);
   return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
