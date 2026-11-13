@@ -2000,7 +2000,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-11-12-03';
+const SF_BUILD = '2026-11-13-01';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -3385,8 +3385,8 @@ function verPlanos(ev) {
     <h2>Escolha seu plano</h2>
     <p class="sub">Seus dados continuam salvos e criptografados no seu celular. Sem cobrança automática.</p>
     <div class="btns" style="display:flex;flex-direction:column;gap:10px">
-      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener" onclick="trackCheckout('ANUAL')">Plano Anual — R$ 49/ano</a>
-      <a class="landing-cta" href="https://pay.kiwify.com.br/Yd9l2b4" target="_blank" rel="noopener" onclick="trackCheckout('VITALICIO')">Família Vitalício — R$ 95 único</a>
+      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener" onclick="trackCheckout('ANUAL')">Plano Anual — R$ 9,90/ano</a>
+      <a class="landing-cta" href="https://pay.kiwify.com.br/Yd9l2b4" target="_blank" rel="noopener" onclick="trackCheckout('VITALICIO')">Família Vitalício — R$ 19,90 único</a>
     </div>
     <div class="hint" style="margin-top:16px">Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber sua licença:
       <div style="font-size:1.3rem;font-weight:700;letter-spacing:1px;margin-top:6px">${esc(codigo)}</div>${linkEnviarComprovante(codigo)}</div>
@@ -3425,8 +3425,8 @@ function viewTrialExpired() {
     <h2>Seu período de avaliação acabou</h2>
     <p class="sub">Você avaliou o Smart Finance Family por ${SF_TRIAL_DIAS} dias. Seus dados continuam salvos e criptografados no seu celular — escolha um plano pra continuar usando.</p>
     <div class="btns" style="display:flex; flex-direction:column; gap:10px">
-      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener" onclick="trackCheckout('ANUAL')">Plano Anual — R$ 49/ano</a>
-      <a class="landing-cta" href="https://pay.kiwify.com.br/Yd9l2b4" target="_blank" rel="noopener" onclick="trackCheckout('VITALICIO')">Família Vitalício — R$ 95 único</a>
+      <a class="landing-cta" href="https://pay.kiwify.com.br/hxCZvnR" target="_blank" rel="noopener" onclick="trackCheckout('ANUAL')">Plano Anual — R$ 9,90/ano</a>
+      <a class="landing-cta" href="https://pay.kiwify.com.br/Yd9l2b4" target="_blank" rel="noopener" onclick="trackCheckout('VITALICIO')">Família Vitalício — R$ 19,90 único</a>
     </div>
     <div class="hint" style="margin-top:16px">
       Depois de pagar, envie o comprovante junto com o <b>código deste aparelho</b> pra receber sua licença:
