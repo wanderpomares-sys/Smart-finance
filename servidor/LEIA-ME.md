@@ -13,7 +13,7 @@ Plano B: quem pagou por outro link/aparelho toca em "Informe o e-mail da compra"
    - `LICENSE_PRIVATE_JWK` = conteúdo inteiro do arquivo da chave privada (o JSON de `{` a `}`)
    - `KIWIFY_TOKEN` = um texto aleatório longo, o mesmo que será usado na Kiwify
 4. **Kiwify** → Apps → Webhooks → Criar:
-   - URL: `https://ibfghedgyxvyredykluq.supabase.co/functions/v1/licenca?acao=webhook`
+   - URL: `https://ibfghedgyxvyredykluq.supabase.co/functions/v1/super-processor?acao=webhook`
    - Token: o mesmo `KIWIFY_TOKEN`
    - Eventos: compra aprovada, reembolso, chargeback; produtos: Anual e Vitalício
 5. Fazer uma compra de teste **a partir do app** (toque em Pagar no app, para o link levar o código do aparelho),
