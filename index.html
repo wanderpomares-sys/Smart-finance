@@ -2794,7 +2794,8 @@ function applyOnboardingImport() {
 /* ── aceite de privacidade e termos (primeiro uso) ── */
 function viewTermsContent() {
   return `<h3>Privacidade</h3>
-    <p class="sub">Seus dados financeiros (saldos, extratos, investimentos) ficam <b>só neste aparelho</b>, criptografados. Não existe servidor: nada é enviado, e ninguém — nem quem desenvolveu o app — tem acesso ou pode recuperar o que você cadastrar. Se você perder o aparelho ou os dados locais sem um backup próprio, eles não podem ser recuperados por ninguém.</p>
+    <p class="sub">Seus dados financeiros (saldos, extratos, investimentos) ficam <b>só neste aparelho</b>, criptografados. Não existe servidor do app: esses dados nunca são enviados, e ninguém — nem quem desenvolveu o app — tem acesso ou pode recuperar o que você cadastrar. Se você perder o aparelho ou os dados locais sem um backup próprio, eles não podem ser recuperados por ninguém.</p>
+    <p class="sub"><b>Medição de uso (Google Analytics):</b> o app usa o Google Analytics para medir, de forma anônima, quantas pessoas abrem o app e de que tipo de aparelho e navegador. O Google recebe um identificador anônimo gerado no aparelho, com o endereço de internet (IP) anonimizado; não ativamos sinais de publicidade nem anúncios personalizados. Nenhum valor, saldo, extrato, nome ou e-mail é enviado.</p>
 
     <h3>Termos de uso</h3>
     <p class="sub">O app é fornecido "como está", sem garantia de resultado. Fazer backup dos seus dados (arquivo de exportação) é responsabilidade sua. Decisões financeiras tomadas com base no app são de sua responsabilidade.</p>
@@ -5544,6 +5545,26 @@ const SFTelemetry = (() => {
   function trackOnce(event, extra) { if (hasFlag(event)) return; setFlag(event); queue(event, extra); agendarFlush(); }
 
   return { track, trackOnce, flush, getDeviceId };
+})();
+</script>
+<script>
+/* ===== Google Analytics (GA4) — medição anônima de abertura do app, sempre ligada (descrita na Política de Privacidade).
+   Nunca envia dados financeiros. page_location vai sem ?query e #hash (evita vazar códigos de cortesia). ===== */
+(function(){
+  var GA_ID = 'G-Z7FZXMZ9QB';
+  if(!GA_ID) return;
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = function(){ dataLayer.push(arguments); };
+  window.addEventListener('load', function(){
+    var sc = document.createElement('script'); sc.async = true;
+    sc.src = 'https://www.googletagmanager.com/gtag/js?id=' + GA_ID;
+    document.head.appendChild(sc);
+    gtag('js', new Date());
+    var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+    gtag('config', GA_ID, { anonymize_ip: true, allow_google_signals: false, allow_ad_personalization_signals: false,
+      page_location: location.origin + location.pathname, page_referrer: '',
+      user_properties: { modo: standalone ? 'app_instalado' : 'navegador' } });
+  });
 })();
 </script>
 </body>
