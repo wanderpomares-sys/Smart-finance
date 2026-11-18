@@ -2008,7 +2008,7 @@ const persistNow = () => { if (S) { try { SFSec.scheduleSave(S); SFSec.flushSave
 
 /* Marca de versão deste arquivo — muda a cada entrega. Usada só pra detectar se existe uma
    versão mais nova publicada no servidor (comparando o texto puro do index.html). */
-const SF_BUILD = '2026-11-13-07';
+const SF_BUILD = '2026-11-18-01';
 let novaVersaoDisponivel = false;
 
 /** Mata qualquer service worker que tenha ficado registrado de uma versão bem antiga do
@@ -2795,7 +2795,7 @@ function applyOnboardingImport() {
 function viewTermsContent() {
   return `<h3>Privacidade</h3>
     <p class="sub">Seus dados financeiros (saldos, extratos, investimentos) ficam <b>só neste aparelho</b>, criptografados. Não existe servidor do app: esses dados nunca são enviados, e ninguém — nem quem desenvolveu o app — tem acesso ou pode recuperar o que você cadastrar. Se você perder o aparelho ou os dados locais sem um backup próprio, eles não podem ser recuperados por ninguém.</p>
-    <p class="sub"><b>Medição de uso (Google Analytics):</b> o app usa o Google Analytics para medir, de forma anônima, quantas pessoas abrem o app e de que tipo de aparelho e navegador. O Google recebe um identificador anônimo gerado no aparelho, com o endereço de internet (IP) anonimizado; não ativamos sinais de publicidade nem anúncios personalizados. Nenhum valor, saldo, extrato, nome ou e-mail é enviado.</p>
+    <p class="sub"><b>Medição de uso (Google Analytics):</b> o app usa o Google Analytics para medir, de forma anônima, quantas pessoas abrem o app, de que tipo de aparelho e navegador, e por qual link ou site elas chegaram (por exemplo, uma rede social). O Google recebe um identificador anônimo gerado no aparelho, com o endereço de internet (IP) anonimizado; não ativamos sinais de publicidade nem anúncios personalizados. Nenhum valor, saldo, extrato, nome ou e-mail é enviado.</p>
 
     <h3>Termos de uso</h3>
     <p class="sub">O app é fornecido "como está", sem garantia de resultado. Fazer backup dos seus dados (arquivo de exportação) é responsabilidade sua. Decisões financeiras tomadas com base no app são de sua responsabilidade.</p>
@@ -5549,12 +5549,31 @@ const SFTelemetry = (() => {
 </script>
 <script>
 /* ===== Google Analytics (GA4) — medição anônima de abertura do app, sempre ligada (descrita na Política de Privacidade).
-   Nunca envia dados financeiros. page_location vai sem ?query e #hash (evita vazar códigos de cortesia). ===== */
+   Nunca envia dados financeiros. page_location vai sem #hash e só com as marcas utm_* da query (evita vazar códigos de cortesia). ===== */
 (function(){
   var GA_ID = 'G-Z7FZXMZ9QB';
   if(!GA_ID) return;
   window.dataLayer = window.dataLayer || [];
   window.gtag = function(){ dataLayer.push(arguments); };
+  /* Só as marcas de origem (utm_*) seguem junto do endereço; qualquer outra coisa depois de ? ou # fica de fora. */
+  function enderecoLimpo(){
+    var q = [];
+    try {
+      var p = new URLSearchParams(location.search);
+      ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(function(k){
+        var v = p.get(k); if (v) q.push(k + '=' + encodeURIComponent(v.slice(0, 60)));
+      });
+    } catch(e) {}
+    return location.origin + location.pathname + (q.length ? '?' + q.join('&') : '');
+  }
+  /* De onde a visita veio: só o site de origem (ex.: instagram.com), nunca o endereço completo. */
+  function origemDaVisita(){
+    try {
+      if (!document.referrer) return '';
+      var u = new URL(document.referrer);
+      return u.origin === location.origin ? '' : u.origin + '/';
+    } catch(e) { return ''; }
+  }
   window.addEventListener('load', function(){
     var sc = document.createElement('script'); sc.async = true;
     sc.src = 'https://www.googletagmanager.com/gtag/js?id=' + GA_ID;
@@ -5562,7 +5581,7 @@ const SFTelemetry = (() => {
     gtag('js', new Date());
     var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
     gtag('config', GA_ID, { anonymize_ip: true, allow_google_signals: false, allow_ad_personalization_signals: false,
-      page_location: location.origin + location.pathname, page_referrer: '',
+      page_location: enderecoLimpo(), page_referrer: origemDaVisita(),
       user_properties: { modo: standalone ? 'app_instalado' : 'navegador' } });
   });
 })();
